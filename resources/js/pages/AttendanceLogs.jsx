@@ -1,13 +1,127 @@
-import React, { useMemo } from 'react'
-import { Head } from '@inertiajs/react'
+import React, { useMemo, useState } from 'react'
+import { Head, router } from '@inertiajs/react'
+import { toast } from 'sonner'
+import { confirmToast } from '@/lib/confirm'
 import Layout from '../layouts/Layout'
 import { DataTable } from '@/components/DataTable'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Download } from 'lucide-react'
+import { Select } from '@/components/ui/select'
+import { Download, Send, Loader2, X, ChevronLeft, ChevronRight } from 'lucide-react'
 
-export default function AttendanceLogs({ logs = [], machines = [] }) {
+export default function AttendanceLogs({ logs = [], machines = [], brands = [], outlets = [], filters = {}, pagination = {} }) {
+  const [sendingId, setSendingId] = useState(null)
+  const [sendingAll, setSendingAll] = useState(false)
+
+  // Outlet yang ditampilkan mengikuti brand terpilih (kalau ada).
+  const outletOptions = useMemo(
+    () => (filters.brand_id ? outlets.filter((o) => o.brand_id === filters.brand_id) : outlets),
+    [outlets, filters.brand_id]
+  )
+
+  // Terapkan filter ke server (gabungkan machine_id + brand/outlet + rentang tanggal).
+  const applyFilters = (next) => {
+    const merged = {
+      machine_id: filters.machine_id || '',
+      brand_id: filters.brand_id || '',
+      outlet_id: filters.outlet_id || '',
+      date_from: filters.date_from || '',
+      date_to: filters.date_to || '',
+      ...next,
+    }
+    // Ganti brand -> reset outlet supaya tak nyangkut di outlet brand lain.
+    if (Object.prototype.hasOwnProperty.call(next, 'brand_id')) {
+      merged.outlet_id = ''
+    }
+    const params = Object.fromEntries(
+      Object.entries(merged).filter(([, v]) => v)
+    )
+    // Ganti filter selalu balik ke halaman 1 (page tidak diikutkan).
+    router.get('/attendance-logs', params, {
+      preserveState: true,
+      preserveScroll: true,
+      only: ['logs', 'filters', 'pagination'],
+    })
+  }
+
+  // Pindah halaman tanpa mengubah filter aktif.
+  const goToPage = (page) => {
+    const params = Object.fromEntries(
+      Object.entries({
+        machine_id: filters.machine_id || '',
+        brand_id: filters.brand_id || '',
+        outlet_id: filters.outlet_id || '',
+        date_from: filters.date_from || '',
+        date_to: filters.date_to || '',
+        page,
+      }).filter(([, v]) => v)
+    )
+    router.get('/attendance-logs', params, {
+      preserveState: true,
+      preserveScroll: true,
+      only: ['logs', 'pagination'],
+    })
+  }
+
+  const hasFilters =
+    filters.machine_id || filters.brand_id || filters.outlet_id || filters.date_from || filters.date_to
+
+  const csrf = () => document.querySelector('meta[name="csrf-token"]').content
+
+  const sendLog = async (id) => {
+    setSendingId(id)
+    try {
+      const res = await fetch(`/api/attendance-logs/${id}/send`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': csrf(),
+        },
+      })
+      const data = await res.json()
+      if (res.ok) toast.success(data.message)
+      else toast.error(data.message || 'Gagal mengirim')
+      router.reload({ only: ['logs', 'pagination'] })
+    } catch (err) {
+      toast.error('Gagal mengirim: ' + err.message)
+    } finally {
+      setSendingId(null)
+    }
+  }
+
+  const sendAllPending = () => {
+    confirmToast({
+      message: 'Kirim semua data pending ke Mekari Talenta?',
+      confirmLabel: 'Kirim',
+      onConfirm: runSendAllPending,
+    })
+  }
+
+  const runSendAllPending = async () => {
+    setSendingAll(true)
+    try {
+      const res = await fetch('/api/attendance-logs/send-pending', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': csrf(),
+        },
+      })
+      const data = await res.json()
+      if (res.ok) toast.success(data.message)
+      else toast.error(data.message || 'Gagal mengirim')
+      router.reload({ only: ['logs', 'pagination'] })
+    } catch (err) {
+      toast.error('Gagal mengirim: ' + err.message)
+    } finally {
+      setSendingAll(false)
+    }
+  }
+
   const columns = useMemo(
     () => [
       {
@@ -69,8 +183,34 @@ export default function AttendanceLogs({ logs = [], machines = [] }) {
           )
         },
       },
+      {
+        id: 'actions',
+        header: 'Action',
+        cell: ({ row }) => {
+          const log = row.original
+          const status = log.status_sync
+          if (status === 'sent' || status === 'duplicate') {
+            return <span className="text-xs text-slate-400">-</span>
+          }
+          return (
+            <Button
+              size="sm"
+              onClick={() => sendLog(log.id)}
+              disabled={sendingId === log.id}
+              className="gap-1"
+            >
+              {sendingId === log.id ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Send className="h-3 w-3" />
+              )}
+              Kirim
+            </Button>
+          )
+        },
+      },
     ],
-    [machines]
+    [machines, sendingId]
   )
 
   const handleExport = () => {
@@ -85,7 +225,8 @@ export default function AttendanceLogs({ logs = [], machines = [] }) {
         log.error_message || '',
       ]),
     ]
-      .map(row => row.map(cell => `"${cell}"`).join(','))
+      // Escape tanda kutip dalam nilai (RFC 4180): " -> "".
+      .map(row => row.map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
       .join('\n')
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -95,12 +236,15 @@ export default function AttendanceLogs({ logs = [], machines = [] }) {
     link.click()
   }
 
+  // Total = semua baris yang cocok filter (lintas halaman); sisanya per halaman.
   const stats = {
-    total: logs.length,
+    total: pagination.total ?? logs.length,
     sent: logs.filter(l => l.status_sync === 'sent').length,
     failed: logs.filter(l => l.status_sync === 'failed').length,
     successRate: logs.length > 0 ? Math.round((logs.filter(l => l.status_sync === 'sent').length / logs.length) * 100) : 0,
   }
+
+  const hasPages = (pagination.last_page ?? 1) > 1
 
   return (
     <Layout>
@@ -109,20 +253,150 @@ export default function AttendanceLogs({ logs = [], machines = [] }) {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Attendance Logs</h1>
-          <Button onClick={handleExport} variant="outline" className="gap-2">
-            <Download className="h-4 w-4" />
-            Export CSV
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={sendAllPending} disabled={sendingAll} className="gap-2">
+              {sendingAll ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              Kirim Semua Pending
+            </Button>
+            <Button onClick={handleExport} variant="outline" className="gap-2">
+              <Download className="h-4 w-4" />
+              Export CSV
+            </Button>
+          </div>
         </div>
 
         {/* Data Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Log Viewer</CardTitle>
-            <CardDescription>Click column headers to sort • Use search to filter</CardDescription>
+            <div className="space-y-4">
+              <div>
+                <CardTitle>Log Viewer</CardTitle>
+                <CardDescription>Click column headers to sort • Use search to filter</CardDescription>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+                <div className="space-y-1.5 sm:w-56">
+                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                    Filter by Machine
+                  </label>
+                  <Select
+                    value={filters.machine_id || ''}
+                    onChange={(e) => applyFilters({ machine_id: e.target.value })}
+                  >
+                    <option value="">Semua Mesin</option>
+                    {machines.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name || m.serial_number}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5 sm:w-48">
+                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                    Brand
+                  </label>
+                  <Select
+                    value={filters.brand_id || ''}
+                    onChange={(e) => applyFilters({ brand_id: e.target.value })}
+                  >
+                    <option value="">Semua Brand</option>
+                    {brands.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5 sm:w-48">
+                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                    Outlet
+                  </label>
+                  <Select
+                    value={filters.outlet_id || ''}
+                    onChange={(e) => applyFilters({ outlet_id: e.target.value })}
+                  >
+                    <option value="">Semua Outlet</option>
+                    {outletOptions.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                    Dari Tanggal
+                  </label>
+                  <Input
+                    type="date"
+                    value={filters.date_from || ''}
+                    onChange={(e) => applyFilters({ date_from: e.target.value })}
+                    className="sm:w-44"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                    Sampai Tanggal
+                  </label>
+                  <Input
+                    type="date"
+                    value={filters.date_to || ''}
+                    onChange={(e) => applyFilters({ date_to: e.target.value })}
+                    className="sm:w-44"
+                  />
+                </div>
+                {hasFilters && (
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => router.get('/attendance-logs', {}, { preserveScroll: true, only: ['logs', 'filters', 'pagination'] })}
+                  >
+                    <X className="h-4 w-4" />
+                    Reset
+                  </Button>
+                )}
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <DataTable columns={columns} data={logs} filterPlaceholder="Filter by employee or biometric ID..." />
+
+            {/* Paginasi server-side. Kotak pencarian di atas hanya menyaring halaman ini. */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4">
+              <p className="text-sm text-slate-500">
+                {pagination.total > 0
+                  ? `Menampilkan ${pagination.from}–${pagination.to} dari ${pagination.total} log`
+                  : 'Tidak ada log'}
+              </p>
+              {hasPages && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1"
+                    disabled={pagination.current_page <= 1}
+                    onClick={() => goToPage(pagination.current_page - 1)}
+                  >
+                    <ChevronLeft className="h-4 w-4" /> Sebelumnya
+                  </Button>
+                  <span className="text-sm text-slate-500">
+                    Hal {pagination.current_page} / {pagination.last_page}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1"
+                    disabled={pagination.current_page >= pagination.last_page}
+                    onClick={() => goToPage(pagination.current_page + 1)}
+                  >
+                    Berikutnya <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
 
@@ -134,12 +408,13 @@ export default function AttendanceLogs({ logs = [], machines = [] }) {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.total}</div>
+              <p className="text-xs text-slate-400">semua yang cocok filter</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Sent</CardTitle>
+              <CardTitle className="text-sm font-medium">Sent <span className="text-xs font-normal text-slate-400">(hal. ini)</span></CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">{stats.sent}</div>

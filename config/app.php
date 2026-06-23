@@ -65,7 +65,11 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    // Mesin ZKTeco dikonfigurasi TimeZone=7 dan mengirim timestamp sebagai
+    // wall-clock WIB (mis. "08:03:22"). App timezone HARUS Asia/Jakarta supaya
+    // Carbon menafsirkan & meng-serialize timestamp itu dengan offset +07:00,
+    // bukan UTC (yang bikin display & kiriman ke Talenta geser +7 jam).
+    'timezone' => env('APP_TIMEZONE', 'Asia/Jakarta'),
 
     /*
     |--------------------------------------------------------------------------

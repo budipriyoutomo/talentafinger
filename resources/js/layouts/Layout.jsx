@@ -1,18 +1,30 @@
 import React from 'react'
-import { Link, usePage } from '@inertiajs/react'
+import { Link, router, usePage } from '@inertiajs/react'
+import { confirmToast } from '@/lib/confirm'
 import { Button } from '@/components/ui/button'
-import { LayoutDashboard, Cpu, FileText, Users } from 'lucide-react'
+import { LayoutDashboard, Cpu, FileText, UserCircle, Fingerprint, Settings, LogOut } from 'lucide-react'
 
 export default function Layout({ children }) {
-  const { url } = usePage()
+  const { url, props } = usePage()
+  const user = props?.auth?.user
 
   const isActive = (path) => url === path
+
+  const logout = () => {
+    confirmToast({
+      message: 'Keluar dari aplikasi?',
+      confirmLabel: 'Keluar',
+      onConfirm: () => router.post('/logout'),
+    })
+  }
 
   const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/machines', label: 'Machines', icon: Cpu },
     { href: '/attendance-logs', label: 'Logs', icon: FileText },
-    { href: '/employee-mappings', label: 'Mappings', icon: Users },
+    { href: '/employee-management', label: 'Employees', icon: UserCircle },
+    { href: '/fingerprints', label: 'Sidik Jari', icon: Fingerprint },
+    { href: '/settings', label: 'Pengaturan', icon: Settings },
   ]
 
   return (
@@ -36,6 +48,23 @@ export default function Layout({ children }) {
                   </Button>
                 </Link>
               ))}
+              {user && (
+                <div className="flex items-center gap-2 pl-2 ml-1 border-l border-slate-200 dark:border-slate-800">
+                  <span className="hidden md:inline text-sm text-slate-500" title={user.email}>
+                    {user.name}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={logout}
+                    className="flex items-center gap-2 text-slate-500"
+                    title="Logout"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    <span className="hidden sm:inline">Keluar</span>
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>

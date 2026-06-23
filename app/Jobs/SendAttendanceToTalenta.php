@@ -7,7 +7,6 @@ use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\RateLimited;
 use Throwable;
 use App\Models\AttendanceLog;
-use App\Services\EmployeeMappingService;
 use App\Services\MekariTalentaService;
 
 class SendAttendanceToTalenta implements ShouldQueue
@@ -44,29 +43,20 @@ class SendAttendanceToTalenta implements ShouldQueue
             return;
         }
 
-        $mappingService = new EmployeeMappingService();
         $talentaService = new MekariTalentaService();
 
-        $talentaId = $mappingService->findTalentaId($log->machine_id, $log->biometric_id_lokal);
+        // Import Fingerprint mengidentifikasi karyawan via badgeno (= biometric_id_lokal);
+        // Talenta yang mencocokkan ke karyawan, jadi tidak perlu lookup talenta_employee_id.
+        $csv = $talentaService->buildFingerprintCsv([
+            [$log->biometric_id_lokal, $log->timestamp],
+        ]);
 
-        if (!$talentaId) {
-            $log->update([
-                'status_sync' => 'failed',
-                'error_message' => 'No mapping found for biometric ID',
-            ]);
-            return;
-        }
+        $response = $talentaService->importFingerprint($csv);
 
-        try {
-            $success = $talentaService->sendAttendance($talentaId, $log->timestamp->toIso8601String());
-
-            if ($success) {
-                $log->update(['status_sync' => 'sent']);
-            } else {
-                throw new \Exception('HTTP request failed');
-            }
-        } catch (Throwable $e) {
-            throw $e;
+        if ($response->successful()) {
+            $log->update(['status_sync' => 'sent', 'error_message' => null]);
+        } else {
+            throw new \Exception("Talenta menolak request (HTTP {$response->status()}): " . $response->body());
         }
     }
 

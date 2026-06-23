@@ -65,6 +65,16 @@ return [
             'replace_placeholders' => true,
         ],
 
+        // Payload mentah upload biometrik (USER/FP/BIODATA) dari mesin.
+        // Dipakai untuk mendeteksi format yang dikirim Solution X100-C.
+        'biometric' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/biometric.log'),
+            'level' => 'debug',
+            'days' => 30,
+            'replace_placeholders' => false,
+        ],
+
         'daily' => [
             'driver' => 'daily',
             'path' => storage_path('logs/laravel.log'),

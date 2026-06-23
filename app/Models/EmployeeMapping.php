@@ -13,13 +13,17 @@ class EmployeeMapping extends Model
 
     protected $fillable = [
         'machine_id',
+        'employee_id',
         'biometric_id_lokal',
-        'talenta_employee_id',
-        'employee_name',
     ];
 
     public function machine()
     {
         return $this->belongsTo(Machine::class);
+    }
+
+    public function employee()
+    {
+        return $this->belongsTo(Employee::class);
     }
 }

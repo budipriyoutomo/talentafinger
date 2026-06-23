@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use App\Models\Machine;
+use App\Models\Employee;
 use App\Models\EmployeeMapping;
 
 class EmployeeMappingSeeder extends Seeder
@@ -14,43 +14,35 @@ class EmployeeMappingSeeder extends Seeder
         $machine1 = Machine::where('serial_number', 'DEMO001')->first();
         $machine2 = Machine::where('serial_number', 'DEMO002')->first();
 
+        // Master karyawan.
+        $ahmad = Employee::firstOrCreate(
+            ['talenta_employee_id' => 'EMP001'],
+            ['name' => 'Ahmad Rizki']
+        );
+        $budi = Employee::firstOrCreate(
+            ['talenta_employee_id' => 'EMP002'],
+            ['name' => 'Budi Santoso']
+        );
+
         if ($machine1) {
-            EmployeeMapping::create([
+            EmployeeMapping::firstOrCreate([
                 'machine_id' => $machine1->id,
                 'biometric_id_lokal' => '1001',
-                'talenta_employee_id' => 'EMP001',
-                'employee_name' => 'Ahmad Rizki',
-            ]);
+            ], ['employee_id' => $ahmad->id]);
 
-            EmployeeMapping::create([
+            EmployeeMapping::firstOrCreate([
                 'machine_id' => $machine1->id,
                 'biometric_id_lokal' => '1002',
-                'talenta_employee_id' => 'EMP002',
-                'employee_name' => 'Budi Santoso',
-            ]);
-
-            EmployeeMapping::create([
-                'machine_id' => $machine1->id,
-                'biometric_id_lokal' => '1003',
-                'talenta_employee_id' => 'EMP003',
-                'employee_name' => 'Citra Dewi',
-            ]);
+            ], ['employee_id' => $budi->id]);
         }
 
+        // Contoh: karyawan yang sama (Ahmad) juga terdaftar di mesin kedua
+        // dengan biometric ID yang sama.
         if ($machine2) {
-            EmployeeMapping::create([
+            EmployeeMapping::firstOrCreate([
                 'machine_id' => $machine2->id,
-                'biometric_id_lokal' => '2001',
-                'talenta_employee_id' => 'EMP004',
-                'employee_name' => 'Dimas Pratama',
-            ]);
-
-            EmployeeMapping::create([
-                'machine_id' => $machine2->id,
-                'biometric_id_lokal' => '2002',
-                'talenta_employee_id' => 'EMP005',
-                'employee_name' => 'Eka Putri',
-            ]);
+                'biometric_id_lokal' => '1001',
+            ], ['employee_id' => $ahmad->id]);
         }
     }
 }

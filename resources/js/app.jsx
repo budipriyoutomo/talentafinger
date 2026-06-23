@@ -2,6 +2,7 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { createInertiaApp } from '@inertiajs/react'
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers'
+import { Toaster } from '@/components/ui/sonner'
 import '../css/app.css'
 
 createInertiaApp({
@@ -13,6 +14,11 @@ createInertiaApp({
     import.meta.glob('./pages/**/*.jsx'),
   ),
   setup({ el, App, props }) {
-    createRoot(el).render(<App {...props} />)
+    createRoot(el).render(
+      <>
+        <App {...props} />
+        <Toaster />
+      </>
+    )
   },
 })

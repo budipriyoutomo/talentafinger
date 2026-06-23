@@ -15,12 +15,17 @@ class Machine extends Model
         'serial_number',
         'name',
         'location',
+        'ip_address',
+        'sdk_port',
         'last_seen_at',
         'status',
+        'is_active',
     ];
 
     protected $casts = [
         'last_seen_at' => 'datetime',
+        'is_active' => 'boolean',
+        'sdk_port' => 'integer',
     ];
 
     public function employeeMappings()

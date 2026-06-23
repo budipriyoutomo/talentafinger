@@ -3,30 +3,36 @@
 namespace Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 use App\Models\Machine;
 use App\Models\AttendanceLog;
-use App\Jobs\SendAttendanceToTalenta;
 
 class AdmsIngestTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_valid_payload_returns_ok_and_creates_log(): void
+    private function machine(): Machine
     {
-        Queue::fake();
-
-        $machine = Machine::create([
+        return Machine::create([
             'serial_number' => 'TEST001',
             'name' => 'Test Machine',
             'location' => 'Test Location',
+            'is_active' => true,
             'status' => 'offline',
         ]);
+    }
 
-        $payload = "ATTLOG\tSN=TEST001\t2026-06-15 08:03:22\t1001\t0\t1\t0";
+    private function ingest(string $sn, string $body)
+    {
+        // SN dikirim mesin via query string; body = PIN\tDateTime\tStatus\tVerify\tWorkCode.
+        return $this->call('POST', "/iclock/cdata?SN={$sn}", [], [], [], ['CONTENT_TYPE' => 'text/plain'], $body);
+    }
 
-        $response = $this->call('POST', '/iclock/cdata', [], [], [], ['CONTENT_TYPE' => 'text/plain'], $payload);
+    public function test_valid_payload_returns_ok_and_creates_log(): void
+    {
+        $machine = $this->machine();
+
+        $response = $this->ingest('TEST001', "1001\t2026-06-15 08:03:22\t0\t1\t0");
 
         $response->assertStatus(200);
         $response->assertSee('OK');
@@ -37,60 +43,50 @@ class AdmsIngestTest extends TestCase
             'timestamp' => '2026-06-15 08:03:22',
             'status_sync' => 'pending',
         ]);
-
-        Queue::assertPushed(SendAttendanceToTalenta::class);
     }
 
     public function test_duplicate_payload_marked_as_duplicate(): void
     {
-        Queue::fake();
+        $this->machine();
+        $body = "1001\t2026-06-15 08:03:22\t0\t1\t0";
 
-        $machine = Machine::create([
-            'serial_number' => 'TEST001',
-            'name' => 'Test Machine',
-            'location' => 'Test Location',
-            'status' => 'offline',
-        ]);
-
-        $payload = "ATTLOG\tSN=TEST001\t2026-06-15 08:03:22\t1001\t0\t1\t0";
-
-        // First post
-        $this->call('POST', '/iclock/cdata', [], [], [], ['CONTENT_TYPE' => 'text/plain'], $payload);
-
-        // Second post - same data
-        $response = $this->call('POST', '/iclock/cdata', [], [], [], ['CONTENT_TYPE' => 'text/plain'], $payload);
+        $this->ingest('TEST001', $body);
+        $response = $this->ingest('TEST001', $body);
 
         $response->assertStatus(200);
-        $response->assertSee('OK');
-
-        $duplicates = AttendanceLog::where('status_sync', 'duplicate')->count();
-        $this->assertGreaterThan(0, $duplicates);
+        $this->assertGreaterThan(0, AttendanceLog::where('status_sync', 'duplicate')->count());
     }
 
-    public function test_malformed_payload_returns_ok(): void
+    public function test_malformed_payload_returns_ok_without_log(): void
     {
-        $machine = Machine::create([
-            'serial_number' => 'TEST001',
-            'name' => 'Test Machine',
-            'location' => 'Test Location',
-            'status' => 'offline',
-        ]);
+        $this->machine();
 
-        $payload = "INVALID\tDATA";
-
-        $response = $this->call('POST', '/iclock/cdata', [], [], [], ['CONTENT_TYPE' => 'text/plain'], $payload);
+        $response = $this->ingest('TEST001', 'INVALID');
 
         $response->assertStatus(200);
-        $response->assertSee('OK');
+        $this->assertSame(0, AttendanceLog::count());
     }
 
     public function test_unknown_machine_returns_ok(): void
     {
-        $payload = "ATTLOG\tSN=UNKNOWN\t2026-06-15 08:03:22\t1001\t0\t1\t0";
-
-        $response = $this->call('POST', '/iclock/cdata', [], [], [], ['CONTENT_TYPE' => 'text/plain'], $payload);
+        $response = $this->ingest('UNKNOWN', "1001\t2026-06-15 08:03:22\t0\t1\t0");
 
         $response->assertStatus(200);
-        $response->assertSee('OK');
+        $this->assertSame(0, AttendanceLog::count());
+    }
+
+    public function test_inactive_machine_does_not_store_log(): void
+    {
+        Machine::create([
+            'serial_number' => 'TEST002',
+            'name' => 'Inactive',
+            'is_active' => false,
+            'status' => 'offline',
+        ]);
+
+        $response = $this->ingest('TEST002', "1001\t2026-06-15 08:03:22\t0\t1\t0");
+
+        $response->assertStatus(200);
+        $this->assertSame(0, AttendanceLog::count());
     }
 }

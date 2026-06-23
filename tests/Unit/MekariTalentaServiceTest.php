@@ -2,51 +2,74 @@
 
 namespace Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Support\Carbon;
+use App\Models\Setting;
 use App\Services\MekariTalentaService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Tests\TestCase;
 
 class MekariTalentaServiceTest extends TestCase
 {
-    public function test_build_signature_returns_expected_headers(): void
+    use RefreshDatabase;
+
+    protected function setUp(): void
     {
-        config(['mekari.client_secret' => 'test-secret']);
+        parent::setUp();
+        // Tanpa baris di tabel settings, Setting::value() jatuh ke config().
+        Setting::flushCache();
+        config([
+            'mekari.client_id' => 'test-client',
+            'mekari.client_secret' => 'test-secret',
+        ]);
+    }
+
+    public function test_build_signature_returns_expected_hmac_header(): void
+    {
         Carbon::setTestNow(Carbon::parse('2026-06-15 08:00:00', 'UTC'));
 
         $service = new MekariTalentaService();
-        $method = 'POST';
-        $path = '/api/v1/attendance';
-        $body = json_encode(['employee_id' => 'EMP001', 'check_time' => '2026-06-15T08:03:22+00:00']);
+        $path = '/v2/talenta/v2/attendance/import-fingerprint';
 
-        $headers = $service->buildSignature($method, $path, $body);
+        $headers = $service->buildSignature('POST', $path);
 
-        // Recompute expected values with the same algorithm (PRD section 7)
-        $date = now()->format('D, d M Y H:i:s T');
-        $bodyHash = base64_encode(hash('sha256', $body, true));
-        $stringToSign = "date: {$date}\n{$method} {$path} HTTP/1.1\ndigest: SHA-256={$bodyHash}";
-        $expectedSignature = base64_encode(hash_hmac('sha256', $stringToSign, 'test-secret', true));
+        // Recompute pakai algoritma yang sama: string-to-sign = date + request-line.
+        $date = now()->toRfc7231String();
+        $payload = "date: {$date}\nPOST {$path} HTTP/1.1";
+        $expectedSignature = base64_encode(hash_hmac('sha256', $payload, 'test-secret', true));
 
-        $this->assertEquals("X-Mekari-Signature {$expectedSignature}", $headers['Authorization']);
-        $this->assertEquals($date, $headers['X-Mekari-Date']);
-        $this->assertEquals("SHA-256={$bodyHash}", $headers['Digest']);
-        $this->assertEquals('application/json', $headers['Content-Type']);
+        $this->assertEquals($date, $headers['Date']);
+        $this->assertEquals('application/json', $headers['Accept']);
+        $this->assertStringContainsString('hmac username="test-client"', $headers['Authorization']);
+        $this->assertStringContainsString('algorithm="hmac-sha256"', $headers['Authorization']);
+        $this->assertStringContainsString('headers="date request-line"', $headers['Authorization']);
+        $this->assertStringContainsString("signature=\"{$expectedSignature}\"", $headers['Authorization']);
 
         Carbon::setTestNow();
     }
 
-    public function test_signature_changes_with_different_body(): void
+    public function test_signature_changes_with_different_path(): void
     {
-        config(['mekari.client_secret' => 'test-secret']);
         Carbon::setTestNow(Carbon::parse('2026-06-15 08:00:00', 'UTC'));
 
         $service = new MekariTalentaService();
 
-        $sig1 = $service->buildSignature('POST', '/api/v1/attendance', '{"a":1}');
-        $sig2 = $service->buildSignature('POST', '/api/v1/attendance', '{"a":2}');
+        $sig1 = $service->buildSignature('POST', '/v2/talenta/v2/attendance/import-fingerprint');
+        $sig2 = $service->buildSignature('GET', '/v2/talenta/v2/employee');
 
         $this->assertNotEquals($sig1['Authorization'], $sig2['Authorization']);
-        $this->assertNotEquals($sig1['Digest'], $sig2['Digest']);
 
         Carbon::setTestNow();
+    }
+
+    public function test_builds_fingerprint_csv(): void
+    {
+        $service = new MekariTalentaService();
+
+        $csv = $service->buildFingerprintCsv([
+            ['1001', Carbon::parse('2026-06-15 08:03:00')],
+        ]);
+
+        $this->assertStringContainsString('badgeno,checktime', $csv);
+        $this->assertStringContainsString('1001,15/06/2026 8:03', $csv);
     }
 }
