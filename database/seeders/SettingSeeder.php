@@ -166,6 +166,27 @@ class SettingSeeder extends Seeder
                 'description' => 'Bila aktif, log berstatus "failed" ikut dicoba kirim ulang tiap siklus auto-kirim.',
                 'default' => '0',
             ],
+
+            // ===== Sinkronisasi jam mesin (AUTO) =====
+            // Sinkron MANUAL selalu tersedia lewat tombol "Sync Time" di halaman Machines.
+            [
+                'key' => 'machine.auto_sync_time',
+                'group' => 'machine',
+                'type' => 'boolean',
+                'label' => 'Aktifkan Auto Sync Time',
+                'description' => 'Bila aktif, jam mesin aktif & online disinkronkan otomatis sesuai interval di bawah. '
+                    . 'Tetap bisa sinkron manual kapan saja dari halaman Machines.',
+                'default' => '0',
+            ],
+            [
+                'key' => 'machine.auto_sync_time_interval',
+                'group' => 'machine',
+                'type' => 'number',
+                'label' => 'Interval Sync (menit)',
+                'description' => 'Jeda antar siklus sinkronisasi jam. Mis. 1440 = sekali sehari. Jam mesin jarang melenceng, '
+                    . 'jadi interval besar biasanya cukup.',
+                'default' => '1440',
+            ],
         ];
     }
 }

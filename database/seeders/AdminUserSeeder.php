@@ -22,6 +22,10 @@ class AdminUserSeeder extends Seeder
             [
                 'name' => env('ADMIN_NAME', 'Administrator'),
                 'password' => Hash::make($password),
+                // Wajib eksplisit: kolom `role` default-nya 'operator', jadi tanpa
+                // ini akun admin awal justru lahir sebagai operator (terkunci dari
+                // manajemen user di /settings).
+                'role' => 'admin',
             ]
         );
     }

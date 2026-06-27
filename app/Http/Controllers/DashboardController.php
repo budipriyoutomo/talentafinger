@@ -237,9 +237,13 @@ class DashboardController extends Controller
                 'type' => $s->type,
                 'label' => $s->label,
                 'description' => $s->description,
-                // Jangan bocorkan rahasia ke browser; cukup tahu sudah terisi.
+                // Jangan bocorkan rahasia penuh ke browser; nilai password tetap
+                // dikirim kosong (input mengganti, bukan menampilkan).
                 'value' => $s->type === 'password' ? '' : $s->value,
                 'is_set' => filled($s->value),
+                // Pratinjau ter-mask (3 depan + 4 belakang) hanya untuk password
+                // yang sudah terisi, supaya admin tahu nilai yang tersimpan.
+                'preview' => $s->type === 'password' ? $this->maskSecret($s->value) : null,
             ])
             ->groupBy('group');
 
@@ -248,6 +252,26 @@ class DashboardController extends Controller
             'users' => User::orderBy('name')->get(['id', 'name', 'email', 'role', 'created_at']),
             'roles' => User::ROLES,
         ]);
+    }
+
+    /**
+     * Mask rahasia untuk pratinjau: tampilkan 3 karakter depan + 4 belakang,
+     * sisanya disamarkan. Untuk nilai pendek (<= 8 karakter) seluruhnya
+     * disamarkan agar tidak membocorkan terlalu banyak.
+     */
+    private function maskSecret(?string $value): ?string
+    {
+        if (! filled($value)) {
+            return null;
+        }
+
+        $len = mb_strlen($value);
+
+        if ($len <= 8) {
+            return str_repeat('•', $len);
+        }
+
+        return mb_substr($value, 0, 3).'••••'.mb_substr($value, -4);
     }
 
 }

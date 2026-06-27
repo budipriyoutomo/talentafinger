@@ -12,3 +12,7 @@ Artisan::command('inspire', function () {
 // (on/off, interval, jam aktif), jadi aman dijalankan tiap menit.
 // Wajib ada cron `php artisan schedule:run` tiap menit di server.
 Schedule::command('attendance:auto-send')->everyMinute()->withoutOverlapping();
+
+// Auto-sync jam mesin. Command menahan diri sesuai pengaturan (on/off,
+// interval) dan hanya mengantrekan untuk mesin aktif & online.
+Schedule::command('machine:auto-sync-time')->everyMinute()->withoutOverlapping();

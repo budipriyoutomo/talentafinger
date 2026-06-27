@@ -55,7 +55,7 @@ class AttendanceSyncService
         try {
             $response = $this->talenta->importFingerprint($csv);
 
-            if ($response->successful()) {
+            if ($this->talenta->wasAccepted($response)) {
                 AttendanceLog::whereIn('id', $logs->pluck('id'))
                     ->update(['status_sync' => 'sent', 'error_message' => null]);
 

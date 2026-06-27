@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Head, router } from '@inertiajs/react'
 import { toast } from 'sonner'
 import { confirmToast } from '@/lib/confirm'
@@ -9,11 +9,38 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
-import { Download, Send, Loader2, X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Download, Send, Loader2, X, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
+
+// Pilihan jeda auto-refresh (detik).
+const REFRESH_INTERVAL = 15
+
+// Format timestamp jadi "YYYY-MM-DD HH:mm:ss" (waktu lokal).
+const formatTimestamp = (value) => {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value ?? ''
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} `
+    + `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
 
 export default function AttendanceLogs({ logs = [], machines = [], brands = [], outlets = [], filters = {}, pagination = {} }) {
   const [sendingId, setSendingId] = useState(null)
   const [sendingAll, setSendingAll] = useState(false)
+  const [autoRefresh, setAutoRefresh] = useState(false)
+
+  // Refresh tabel berkala tanpa kehilangan filter/scroll. Hanya muat ulang
+  // 'logs' & 'pagination' (filter dipertahankan dari URL aktif).
+  const sendingRef = useRef(false)
+  sendingRef.current = sendingId !== null || sendingAll
+  useEffect(() => {
+    if (!autoRefresh) return
+    const id = setInterval(() => {
+      // Jangan tabrak proses kirim yang sedang berjalan.
+      if (sendingRef.current) return
+      router.reload({ only: ['logs', 'pagination'], preserveScroll: true })
+    }, REFRESH_INTERVAL * 1000)
+    return () => clearInterval(id)
+  }, [autoRefresh])
 
   // Outlet yang ditampilkan mengikuti brand terpilih (kalau ada).
   const outletOptions = useMemo(
@@ -129,7 +156,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         header: 'Timestamp',
         cell: ({ row }) => (
           <div className="text-sm">
-            {new Date(row.getValue('timestamp')).toLocaleString()}
+            {formatTimestamp(row.getValue('timestamp'))}
           </div>
         ),
       },
@@ -217,7 +244,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
     const csv = [
       ['Timestamp', 'Machine', 'Biometric ID', 'Employee', 'Status', 'Error'],
       ...logs.map(log => [
-        new Date(log.timestamp).toLocaleString(),
+        formatTimestamp(log.timestamp),
         machines.find(m => m.id === log.machine_id)?.name || 'Unknown',
         log.biometric_id_lokal,
         log.employee_name || 'N/A',
@@ -254,6 +281,15 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Attendance Logs</h1>
           <div className="flex gap-2">
+            <Button
+              onClick={() => setAutoRefresh((v) => !v)}
+              variant={autoRefresh ? 'default' : 'outline'}
+              className="gap-2"
+              title={autoRefresh ? `Auto-refresh tiap ${REFRESH_INTERVAL} detik (klik untuk berhenti)` : 'Aktifkan auto-refresh tabel'}
+            >
+              <RefreshCw className={`h-4 w-4 ${autoRefresh ? 'animate-spin' : ''}`} />
+              {autoRefresh ? `Auto ${REFRESH_INTERVAL}s` : 'Auto-refresh'}
+            </Button>
             <Button onClick={sendAllPending} disabled={sendingAll} className="gap-2">
               {sendingAll ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

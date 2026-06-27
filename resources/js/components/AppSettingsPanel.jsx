@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Settings as SettingsIcon, Plug, Cpu, SlidersHorizontal, Send, Save, Loader2, CheckCircle2 } from 'lucide-react'
+import { Settings as SettingsIcon, Plug, Cpu, SlidersHorizontal, Send, Clock, Save, Loader2, CheckCircle2 } from 'lucide-react'
 
 function csrf() {
   return document.querySelector('meta[name="csrf-token"]').content
@@ -22,6 +22,11 @@ const GROUP_META = {
     icon: Send,
     description: 'Jadwal pengiriman otomatis absensi ke Talenta. Pengiriman manual tetap tersedia di halaman Logs.',
   },
+  machine: {
+    title: 'Sinkronisasi Jam Mesin (Auto)',
+    icon: Clock,
+    description: 'Penyetelan jam mesin secara otomatis & terjadwal. Sinkron manual tetap tersedia di halaman Machines.',
+  },
   adms: {
     title: 'Perangkat / ADMS',
     icon: Cpu,
@@ -34,7 +39,7 @@ const GROUP_META = {
   },
 }
 
-const GROUP_ORDER = ['talenta', 'attendance', 'adms', 'general']
+const GROUP_ORDER = ['talenta', 'attendance', 'machine', 'adms', 'general']
 
 export default function AppSettingsPanel({ groups = {} }) {
   // Nilai form: { key: value }. Kosongkan dulu lalu isi dari props.
@@ -104,11 +109,16 @@ export default function AppSettingsPanel({ groups = {} }) {
     const inputType =
       s.type === 'password' ? 'password' : s.type === 'number' ? 'number' : s.type === 'time' ? 'time' : 'text'
 
+    const passwordPlaceholder =
+      s.type === 'password' && s.is_set
+        ? `${s.preview ?? '••••••••'} · tersimpan, kosongkan untuk tetap`
+        : ''
+
     return (
       <Input
         type={inputType}
         value={form[s.key] ?? ''}
-        placeholder={s.type === 'password' && s.is_set ? '•••••••• (tersimpan, kosongkan untuk tetap)' : ''}
+        placeholder={passwordPlaceholder}
         onChange={(e) => setField(s.key, e.target.value)}
         className={s.type === 'time' ? 'sm:w-40' : undefined}
       />

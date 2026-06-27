@@ -43,6 +43,27 @@ class DeviceCommandService
     }
 
     /**
+     * Versi aman untuk auto-sync: lewati bila masih ada perintah sync_time
+     * yang belum dieksekusi mesin (status pending/sent), agar antrean tidak
+     * menumpuk saat mesin sedang offline atau lambat polling.
+     *
+     * @return DeviceCommand|null  Perintah baru, atau null bila dilewati.
+     */
+    public function queueSyncTimeIfAbsent(Machine $machine): ?DeviceCommand
+    {
+        $hasPending = DeviceCommand::where('machine_id', $machine->id)
+            ->where('type', 'sync_time')
+            ->whereIn('status', ['pending', 'sent'])
+            ->exists();
+
+        if ($hasPending) {
+            return null;
+        }
+
+        return $this->queueSyncTime($machine);
+    }
+
+    /**
      * Antrekan perintah push sidik jari satu karyawan (PIN) ke mesin tujuan.
      *
      * Membuat: 1x DATA UPDATE USERINFO (bikin user-nya) + 1x DATA UPDATE

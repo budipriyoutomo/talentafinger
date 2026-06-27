@@ -69,7 +69,7 @@ class MekariTalentaServiceTest extends TestCase
             ['1001', Carbon::parse('2026-06-15 08:03:00')],
         ]);
 
-        $this->assertStringContainsString('badgeno,checktime', $csv);
-        $this->assertStringContainsString('1001,15/06/2026 8:03', $csv);
+        $this->assertStringContainsString('badgeno;date;checktime', $csv);
+        $this->assertStringContainsString('1001;2026-06-15;08:03:00', $csv);
     }
 }
