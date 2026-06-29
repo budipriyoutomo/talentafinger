@@ -18,7 +18,6 @@ class DatabaseSeeder extends Seeder
         $this->call([
             AdminUserSeeder::class,
             MachineSeeder::class,
-            EmployeeMappingSeeder::class,
             SettingSeeder::class,
         ]);
     }

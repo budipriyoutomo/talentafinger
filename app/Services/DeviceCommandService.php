@@ -4,7 +4,7 @@ namespace App\Services;
 
 use App\Models\BiometricTemplate;
 use App\Models\DeviceCommand;
-use App\Models\EmployeeMapping;
+use App\Models\Employee;
 use App\Models\Machine;
 use App\Models\Setting;
 use Carbon\Carbon;
@@ -82,7 +82,7 @@ class DeviceCommandService
             return 0;
         }
 
-        // Nama karyawan diambil dari mapping (mesin mana pun) → employee.
+        // Nama karyawan diambil dari Biometric ID (PIN global) → employee.
         // Mesin butuh USERINFO lebih dulu sebelum FINGERTMP bisa ditempel.
         $name = $this->resolveEmployeeName($pin) ?? $pin;
 
@@ -111,11 +111,6 @@ class DeviceCommandService
 
     private function resolveEmployeeName(string $pin): ?string
     {
-        $mapping = EmployeeMapping::with('employee')
-            ->where('biometric_id_lokal', $pin)
-            ->whereHas('employee')
-            ->first();
-
-        return $mapping?->employee?->name;
+        return Employee::where('biometric_id', $pin)->value('name');
     }
 }

@@ -28,11 +28,6 @@ class Machine extends Model
         'sdk_port' => 'integer',
     ];
 
-    public function employeeMappings()
-    {
-        return $this->hasMany(EmployeeMapping::class);
-    }
-
     public function attendanceLogs()
     {
         return $this->hasMany(AttendanceLog::class);

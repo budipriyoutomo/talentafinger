@@ -1,0 +1,38 @@
+# Build artefak & dependency (dibangun ulang di dalam image)
+/vendor
+/node_modules
+/public/build
+/public/hot
+/public/storage
+
+# Env & rahasia
+.env
+.env.*
+!.env.example
+auth.json
+
+# Storage runtime
+/storage/logs/*
+/storage/framework/cache/data/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+/storage/*.key
+/storage/pail
+
+# VCS & tooling
+.git
+.gitignore
+.gitattributes
+.github
+.idea
+.vscode
+.zed
+.claude
+.phpunit.result.cache
+/.phpunit.cache
+_ide_helper.php
+Homestead.*
+
+# Docker sendiri (tidak perlu masuk image)
+docker-compose*.yml
+README_DOCKER.md

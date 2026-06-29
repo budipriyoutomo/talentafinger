@@ -1,0 +1,145 @@
+# =========================================================================
+# ADMS Middleware — Docker Compose
+#
+# Arsitektur jaringan:
+#   - db, redis, app(php-fpm), scheduler  -> network compose normal.
+#   - vpn (L2TP/IPSec dial-out)            -> memegang tunnel ppp0.
+#   - nginx & queue                        -> network_mode: service:vpn
+#       * nginx reachable mesin ZKTeco via IP tunnel (polling ADMS, inbound)
+#         dan via port host yang dipublish container vpn (akses admin).
+#       * queue worker outbound TCP 4370 ke mesin (job zk_sync.py).
+#
+# Sebelum 'up': salin .env.docker.example -> .env.docker dan isi nilainya.
+# =========================================================================
+
+x-app-build: &app-build
+  context: .
+  dockerfile: Dockerfile
+  target: runtime
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-adms_middleware}
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_DATABASE:-adms_middleware}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  vpn:
+    build:
+      context: .
+      dockerfile: docker/vpn/Dockerfile
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/ppp:/dev/ppp
+    environment:
+      VPN_SERVER: ${VPN_SERVER}
+      VPN_PSK: ${VPN_PSK}
+      VPN_USERNAME: ${VPN_USERNAME}
+      VPN_PASSWORD: ${VPN_PASSWORD}
+      VPN_ROUTES: ${VPN_ROUTES:-200.100.100.0/24}
+    # Port web dipublish di sini karena nginx berbagi namespace service ini.
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "ip -4 addr show ppp0 2>/dev/null | grep -q 'inet '"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  app:
+    build: *app-build
+    image: adms-middleware:latest
+    restart: unless-stopped
+    env_file: .env.docker
+    environment:
+      CONTAINER_ROLE: app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - storagedata:/var/www/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/9000'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+    image: adms-nginx:latest
+    restart: unless-stopped
+    # Berbagi namespace vpn: tidak boleh punya 'ports'/'networks' sendiri.
+    network_mode: "service:vpn"
+    depends_on:
+      vpn:
+        condition: service_healthy
+      app:
+        condition: service_healthy
+
+  queue:
+    build: *app-build
+    image: adms-middleware:latest
+    restart: unless-stopped
+    env_file: .env.docker
+    environment:
+      CONTAINER_ROLE: worker
+    # Outbound 4370 ke mesin lewat tunnel.
+    network_mode: "service:vpn"
+    volumes:
+      - storagedata:/var/www/storage
+    command: ["php", "artisan", "queue:work", "--tries=3", "--timeout=90", "--sleep=3", "--max-time=3600"]
+    depends_on:
+      app:
+        condition: service_healthy
+      vpn:
+        condition: service_healthy
+
+  scheduler:
+    build: *app-build
+    image: adms-middleware:latest
+    restart: unless-stopped
+    env_file: .env.docker
+    environment:
+      CONTAINER_ROLE: scheduler
+    volumes:
+      - storagedata:/var/www/storage
+    # Loop schedule:run tiap menit (pengganti cron).
+    command: ["bash", "-c", "while true; do php artisan schedule:run --no-interaction; sleep 60; done"]
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:
+  storagedata:

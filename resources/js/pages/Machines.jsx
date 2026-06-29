@@ -381,10 +381,6 @@ export default function Machines({ machines = [] }) {
                           <FileClock className="h-4 w-4 text-slate-400" />
                           <span className="font-semibold">{machine.logs_count}</span> log
                         </div>
-                        <div className="flex items-center gap-1.5 text-sm text-slate-600 dark:text-slate-300">
-                          <Users className="h-4 w-4 text-slate-400" />
-                          <span className="font-semibold">{machine.mappings_count}</span> mapping
-                        </div>
                         {machine.last_log_at && (
                           <div className="text-sm text-slate-500 dark:text-slate-400">
                             Log terakhir: {new Date(machine.last_log_at).toLocaleString()}

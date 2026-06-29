@@ -6,6 +6,8 @@ use App\Models\Setting;
 use App\Services\MekariTalentaService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class MekariTalentaServiceTest extends TestCase
@@ -71,5 +73,48 @@ class MekariTalentaServiceTest extends TestCase
 
         $this->assertStringContainsString('badgeno;date;checktime', $csv);
         $this->assertStringContainsString('1001;2026-06-15;08:03:00', $csv);
+    }
+
+    public function test_was_accepted_true_when_2xx_without_errors(): void
+    {
+        $service = new MekariTalentaService();
+        $response = Http::fake(['*' => Http::response(['code' => 200, 'message' => 'Success'], 200)])
+            ->get('https://x.test');
+
+        $this->assertTrue($service->wasAccepted($response));
+    }
+
+    public function test_was_accepted_false_when_2xx_but_body_has_errors(): void
+    {
+        // Talenta bisa balas 200 tapi body berisi error validasi -> harus dianggap GAGAL.
+        $service = new MekariTalentaService();
+        $body = ['message' => 'input validation error', 'errors' => ['setting absence not found for this company']];
+        $response = Http::fake(['*' => Http::response($body, 200)])->get('https://x.test');
+
+        $this->assertFalse($service->wasAccepted($response));
+    }
+
+    public function test_was_accepted_false_when_http_not_successful(): void
+    {
+        $service = new MekariTalentaService();
+        $response = Http::fake(['*' => Http::response(['message' => 'bad'], 400)])->get('https://x.test');
+
+        $this->assertFalse($service->wasAccepted($response));
+    }
+
+    public function test_import_fingerprint_saves_request_and_response_files(): void
+    {
+        Storage::fake('local');
+        Http::fake(['*' => Http::response(['code' => 200], 200)]);
+
+        $service = new MekariTalentaService();
+        $service->importFingerprint("badgeno;date;checktime\n1001;2026-06-15;08:03:00\n");
+
+        $files = Storage::disk('local')->files('talenta');
+        $csvFiles = array_filter($files, fn ($f) => str_ends_with($f, '.csv'));
+        $respFiles = array_filter($files, fn ($f) => str_ends_with($f, '.response.txt'));
+
+        $this->assertNotEmpty($csvFiles, 'CSV request harus tersimpan');
+        $this->assertNotEmpty($respFiles, 'Response Talenta harus tersimpan');
     }
 }

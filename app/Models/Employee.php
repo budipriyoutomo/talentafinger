@@ -26,11 +26,6 @@ class Employee extends Model
         'device_privilege' => 'integer',
     ];
 
-    public function mappings()
-    {
-        return $this->hasMany(EmployeeMapping::class);
-    }
-
     public function outlet()
     {
         return $this->belongsTo(Outlet::class);

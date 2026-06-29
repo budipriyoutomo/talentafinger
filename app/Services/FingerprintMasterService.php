@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\BiometricTemplate;
 use App\Models\Employee;
-use App\Models\EmployeeMapping;
 use App\Models\Machine;
 
 /**
@@ -15,27 +14,20 @@ use App\Models\Machine;
  *               (biometric_templates.employee_id). DB = sumber kebenaran.
  *   2. SEBAR  : rakit template karyawan dari DB -> push ke mesin tujuan (TCP 4370).
  *
- * PIN di mesin TIDAK disimpan di template; diambil per mesin dari
- * employee_mappings.biometric_id_lokal (1 karyawan bisa beda PIN tiap mesin).
+ * PIN di mesin TIDAK disimpan di template; diambil dari employees.biometric_id
+ * (PIN global karyawan, sama di semua mesin).
  */
 class FingerprintMasterService
 {
     public function __construct(private ZkSyncService $zk) {}
 
     /**
-     * PIN karyawan di sebuah mesin. Utamakan Biometric ID master (employees.biometric_id);
-     * bila kosong, fallback ke mapping per-mesin (employee_mappings.biometric_id_lokal).
-     * Null bila keduanya tak ada.
+     * PIN karyawan di mesin = Biometric ID master (employees.biometric_id), PIN global
+     * yang konsisten di semua mesin. Null bila karyawan belum punya Biometric ID.
      */
     public function resolvePin(Employee $employee, Machine $machine): ?string
     {
-        if (! empty($employee->biometric_id)) {
-            return (string) $employee->biometric_id;
-        }
-
-        return EmployeeMapping::where('employee_id', $employee->id)
-            ->where('machine_id', $machine->id)
-            ->value('biometric_id_lokal');
+        return ! empty($employee->biometric_id) ? (string) $employee->biometric_id : null;
     }
 
     /**
@@ -50,7 +42,7 @@ class FingerprintMasterService
 
         $pin = $this->resolvePin($employee, $source);
         if (! $pin) {
-            return ['ok' => false, 'error' => "Karyawan belum punya Biometric ID (atau mapping) untuk mesin {$source->name}."];
+            return ['ok' => false, 'error' => "Karyawan belum punya Biometric ID (PIN) untuk mesin {$source->name}."];
         }
 
         $pulled = $this->zk->pull($source, $pin);
@@ -107,7 +99,7 @@ class FingerprintMasterService
 
         $pin = $this->resolvePin($employee, $target);
         if (! $pin) {
-            return ['ok' => false, 'machine' => $target->name, 'error' => "Karyawan belum punya Biometric ID (atau mapping) untuk mesin {$target->name}."];
+            return ['ok' => false, 'machine' => $target->name, 'error' => "Karyawan belum punya Biometric ID (PIN) untuk mesin {$target->name}."];
         }
 
         $rows = BiometricTemplate::where('employee_id', $employee->id)->orderBy('fid')->get();

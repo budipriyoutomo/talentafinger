@@ -2,25 +2,23 @@ import React, { useState } from 'react'
 import { Head } from '@inertiajs/react'
 import Layout from '../layouts/Layout'
 import { Button } from '@/components/ui/button'
-import { UserCircle, Users, Building2 } from 'lucide-react'
+import { UserCircle, Building2 } from 'lucide-react'
 import EmployeesPanel from '@/components/EmployeesPanel'
-import MappingsPanel from '@/components/MappingsPanel'
 import OrgStructurePanel from '@/components/OrgStructurePanel'
 
-// Tab awal bisa di-preselect via ?tab=mappings|structure (mis. dari link lama).
+// Tab awal bisa di-preselect via ?tab=structure (mis. dari link lama).
 function initialTab() {
   if (typeof window === 'undefined') return 'employees'
   const t = new URLSearchParams(window.location.search).get('tab')
-  return ['mappings', 'structure'].includes(t) ? t : 'employees'
+  return t === 'structure' ? t : 'employees'
 }
 
-export default function EmployeeManagement({ employees = [], mappings = [], machines = [], companies = [] }) {
+export default function EmployeeManagement({ employees = [], machines = [], companies = [] }) {
   const [tab, setTab] = useState(initialTab)
 
   const tabs = [
     { key: 'employees', label: 'Karyawan', icon: UserCircle },
     { key: 'structure', label: 'Struktur Organisasi', icon: Building2 },
-    { key: 'mappings', label: 'Mapping', icon: Users },
   ]
 
   return (
@@ -51,9 +49,6 @@ export default function EmployeeManagement({ employees = [], mappings = [], mach
 
         {tab === 'employees' && <EmployeesPanel employees={employees} companies={companies} machines={machines} />}
         {tab === 'structure' && <OrgStructurePanel companies={companies} />}
-        {tab === 'mappings' && (
-          <MappingsPanel mappings={mappings} machines={machines} employees={employees} />
-        )}
       </div>
     </Layout>
   )

@@ -2,7 +2,6 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Models\Machine;
-use App\Models\EmployeeMapping;
 use App\Models\Employee;
 use App\Models\Company;
 use App\Models\Brand;
@@ -586,70 +585,6 @@ Route::get('/fingerprint/distribute-jobs/{id}', function ($id) {
         'items' => $job->items ?? [],
         'error' => $job->error,
     ]);
-});
-
-// ===== Employee mappings (tautan biometric per mesin -> employee) =====
-Route::get('/employee-mappings', function () {
-    return EmployeeMapping::with('employee')->get();
-});
-
-Route::post('/employee-mappings', function (Illuminate\Http\Request $request) {
-    $data = $request->validate([
-        'machine_id' => 'required|exists:machines,id',
-        'employee_id' => 'required|exists:employees,id',
-        'biometric_id_lokal' => [
-            'required',
-            Rule::unique('employee_mappings', 'biometric_id_lokal')
-                ->where(fn($q) => $q->where('machine_id', $request->machine_id)),
-        ],
-    ], [
-        'biometric_id_lokal.unique' => 'Biometric ID ini sudah dipetakan di mesin tersebut.',
-    ]);
-
-    return EmployeeMapping::create($data);
-});
-
-// Batch: petakan 1 karyawan ke banyak mesin sekaligus.
-Route::post('/employee-mappings/batch', function (Illuminate\Http\Request $request) {
-    $data = $request->validate([
-        'employee_id' => 'required|exists:employees,id',
-        'mappings' => 'required|array|min:1',
-        'mappings.*.machine_id' => 'required|exists:machines,id',
-        'mappings.*.biometric_id_lokal' => 'required|string',
-    ]);
-
-    $created = 0;
-    $skipped = 0;
-
-    foreach ($data['mappings'] as $m) {
-        $exists = EmployeeMapping::where('machine_id', $m['machine_id'])
-            ->where('biometric_id_lokal', $m['biometric_id_lokal'])
-            ->exists();
-
-        if ($exists) {
-            $skipped++;
-            continue;
-        }
-
-        EmployeeMapping::create([
-            'employee_id' => $data['employee_id'],
-            'machine_id' => $m['machine_id'],
-            'biometric_id_lokal' => $m['biometric_id_lokal'],
-        ]);
-        $created++;
-    }
-
-    return response()->json([
-        'success' => true,
-        'created' => $created,
-        'skipped' => $skipped,
-        'message' => "Berhasil dibuat: {$created}. Dilewati (sudah ada): {$skipped}.",
-    ]);
-});
-
-Route::delete('/employee-mappings/{id}', function ($id) {
-    EmployeeMapping::findOrFail($id)->delete();
-    return response()->json(['success' => true]);
 });
 
 Route::get('/attendance-logs', function (Illuminate\Http\Request $request) {

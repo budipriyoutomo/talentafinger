@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AttendanceLog;
+use App\Models\Employee;
 use App\Models\Machine;
 use App\Models\Setting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -27,6 +28,13 @@ class AutoSendAttendanceTest extends TestCase
             'name' => 'M1',
             'is_active' => true,
             'status' => 'offline',
+        ]);
+
+        Employee::create([
+            'name' => 'Budi',
+            'talenta_employee_id' => 'TAL-99',
+            'biometric_id' => '1001',
+            'is_active' => true,
         ]);
 
         return AttendanceLog::create([

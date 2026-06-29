@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use App\Models\Machine;
 use App\Models\AttendanceLog;
+use App\Models\DeviceCommand;
 
 class AdmsIngestTest extends TestCase
 {
@@ -88,5 +89,55 @@ class AdmsIngestTest extends TestCase
 
         $response->assertStatus(200);
         $this->assertSame(0, AttendanceLog::count());
+    }
+
+    public function test_fingerprint_template_upload_is_stored_not_logged_as_attendance(): void
+    {
+        $machine = $this->machine();
+
+        // table != ATTLOG -> body berisi baris template "FP PIN=..."
+        $body = "FP PIN=1001\tFID=5\tSize=12\tValid=1\tTMP=QUJDREVG";
+        $response = $this->call('POST', '/iclock/cdata?SN=TEST001&table=OPERLOG', [], [], [], ['CONTENT_TYPE' => 'text/plain'], $body);
+
+        $response->assertStatus(200);
+        $this->assertSame(0, AttendanceLog::count(), 'Upload template tidak boleh jadi log absensi');
+        $this->assertDatabaseHas('biometric_templates', [
+            'biometric_id' => '1001',
+            'fid' => 5,
+            'source_machine_id' => $machine->id,
+        ]);
+    }
+
+    public function test_getrequest_delivers_pending_command_then_marks_sent(): void
+    {
+        $machine = $this->machine();
+        $cmd = DeviceCommand::create([
+            'machine_id' => $machine->id,
+            'command' => 'SET OPTIONS DateTime=...',
+            'status' => 'pending',
+        ]);
+
+        $response = $this->call('GET', "/iclock/getrequest?SN=TEST001");
+
+        $response->assertStatus(200);
+        $response->assertSee("C:{$cmd->id}:", false);
+        $this->assertSame('sent', $cmd->fresh()->status);
+        $this->assertNotNull($cmd->fresh()->sent_at);
+    }
+
+    public function test_devicecmd_marks_command_done(): void
+    {
+        $machine = $this->machine();
+        $cmd = DeviceCommand::create([
+            'machine_id' => $machine->id,
+            'command' => 'SET OPTIONS DateTime=...',
+            'status' => 'sent',
+        ]);
+
+        $response = $this->call('POST', '/iclock/devicecmd', [], [], [], ['CONTENT_TYPE' => 'text/plain'], "ID={$cmd->id}&Return=0&CMD=OPTIONS");
+
+        $response->assertStatus(200);
+        $this->assertSame('done', $cmd->fresh()->status);
+        $this->assertNotNull($cmd->fresh()->done_at);
     }
 }

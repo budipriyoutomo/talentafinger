@@ -282,11 +282,6 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
         },
       },
       {
-        accessorKey: 'mappings_count',
-        header: 'Mesin Ter-mapping',
-        cell: ({ row }) => <Badge variant="secondary">{row.getValue('mappings_count')}</Badge>,
-      },
-      {
         id: 'fingerprints',
         header: 'Sidik Jari (DB)',
         cell: ({ row }) => {
@@ -358,7 +353,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
             <CardTitle>{editingId ? 'Edit Karyawan' : 'Tambah Karyawan'}</CardTitle>
             <CardDescription>
               Master karyawan. Penempatan dipilih bertingkat: Company → Brand → Outlet.
-              Satu karyawan bisa ditautkan ke beberapa mesin di tab Mapping.
+              Biometric ID (PIN) dipakai sebagai identitas di semua mesin.
             </CardDescription>
           </CardHeader>
           <CardContent>

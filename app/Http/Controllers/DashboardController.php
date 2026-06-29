@@ -4,12 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Machine;
 use App\Models\AttendanceLog;
-use App\Models\EmployeeMapping;
 use App\Models\Employee;
 use App\Models\Company;
 use App\Models\Brand;
 use App\Models\Outlet;
-use App\Models\BiometricTemplate;
 use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -42,7 +40,7 @@ class DashboardController extends Controller
     public function machines()
     {
         $machines = Machine::query()
-            ->withCount(['attendanceLogs', 'employeeMappings'])
+            ->withCount(['attendanceLogs'])
             ->orderBy('name')
             ->get()
             ->map(fn ($m) => [
@@ -56,7 +54,6 @@ class DashboardController extends Controller
                 'is_active' => $m->is_active,
                 'is_online' => $m->isOnline(),
                 'logs_count' => $m->attendance_logs_count,
-                'mappings_count' => $m->employee_mappings_count,
                 'last_log_at' => $m->attendanceLogs()->max('timestamp'),
             ]);
 
@@ -73,25 +70,23 @@ class DashboardController extends Controller
         $dateFrom = $request->query('date_from');
         $dateTo = $request->query('date_to');
 
-        // Preload semua mapping (+ employee) sekali, dipetakan per machine|bio,
-        // supaya tidak query berulang per baris log (hindari N+1).
-        $mappingByKey = EmployeeMapping::with('employee')
+        // Preload semua karyawan ber-Biometric ID sekali, dipetakan per PIN, supaya
+        // nama karyawan log bisa di-resolve tanpa query berulang (hindari N+1).
+        $employeeByPin = Employee::whereNotNull('biometric_id')
             ->get()
-            ->keyBy(fn($m) => $m->machine_id . '|' . $m->biometric_id_lokal);
+            ->keyBy('biometric_id');
 
         // Filter brand/outlet bekerja lewat karyawan: log tak menyimpan brand/outlet
-        // langsung, jadi ambil pasangan (machine, biometric) milik karyawan pada
-        // brand/outlet terpilih lalu batasi query log ke pasangan tsb.
-        $orgMappings = null;
+        // langsung, jadi ambil PIN (biometric_id) karyawan pada brand/outlet terpilih
+        // lalu batasi query log ke PIN tsb.
+        $orgPins = null;
         if ($brandId || $outletId) {
-            $employeeIds = Employee::query()
+            $orgPins = Employee::query()
+                ->whereNotNull('biometric_id')
                 ->when($outletId, fn($q) => $q->where('outlet_id', $outletId))
                 ->when($brandId && ! $outletId,
                     fn($q) => $q->whereHas('outlet', fn($qq) => $qq->where('brand_id', $brandId)))
-                ->pluck('id');
-
-            $orgMappings = EmployeeMapping::whereIn('employee_id', $employeeIds)
-                ->get(['machine_id', 'biometric_id_lokal']);
+                ->pluck('biometric_id');
         }
 
         $perPage = (int) $request->query('per_page', 100);
@@ -101,19 +96,13 @@ class DashboardController extends Controller
             ->when($machineId, fn($q) => $q->where('machine_id', $machineId))
             ->when($dateFrom, fn($q) => $q->whereDate('timestamp', '>=', $dateFrom))
             ->when($dateTo, fn($q) => $q->whereDate('timestamp', '<=', $dateTo))
-            ->when($orgMappings !== null, function ($q) use ($orgMappings) {
-                // Tak ada karyawan/ mapping yang cocok -> hasil kosong.
-                if ($orgMappings->isEmpty()) {
+            ->when($orgPins !== null, function ($q) use ($orgPins) {
+                // Tak ada karyawan yang cocok -> hasil kosong.
+                if ($orgPins->isEmpty()) {
                     $q->whereRaw('1 = 0');
                     return;
                 }
-                $q->where(function ($qq) use ($orgMappings) {
-                    foreach ($orgMappings as $m) {
-                        $qq->orWhere(fn($w) => $w
-                            ->where('machine_id', $m->machine_id)
-                            ->where('biometric_id_lokal', $m->biometric_id_lokal));
-                    }
-                });
+                $q->whereIn('biometric_id_lokal', $orgPins->all());
             })
             ->orderBy('created_at', 'desc')
             ->paginate($perPage)
@@ -125,9 +114,7 @@ class DashboardController extends Controller
                 'timestamp' => $log->timestamp,
                 'status_sync' => $log->status_sync,
                 'error_message' => $log->error_message,
-                'employee_name' => optional(optional(
-                    $mappingByKey->get($log->machine_id . '|' . $log->biometric_id_lokal)
-                )->employee)->name,
+                'employee_name' => $employeeByPin->get($log->biometric_id_lokal)?->name,
             ]);
 
         return Inertia::render('AttendanceLogs', [
@@ -154,15 +141,13 @@ class DashboardController extends Controller
     }
 
     /**
-     * Halaman gabungan Employees + Mappings (UI bertab). Props = union dari
-     * data karyawan (ber-mappings_count, sekaligus dipakai untuk dropdown
-     * mapping) + daftar mapping + daftar mesin.
+     * Halaman Employees. Identitas karyawan untuk absensi & sidik jari memakai
+     * Biometric ID (PIN global) — tidak ada lagi mapping per-mesin.
      */
     public function employeeManagement()
     {
         return Inertia::render('EmployeeManagement', [
             'employees' => Employee::query()
-                ->withCount('mappings')
                 ->withCount('biometricTemplates')
                 ->withMax('biometricTemplates', 'enrolled_at')
                 ->with('outlet.brand.company')
@@ -176,7 +161,6 @@ class DashboardController extends Controller
                     'biometric_id' => $e->biometric_id,
                     'is_active' => $e->is_active,
                     'device_privilege' => $e->device_privilege,
-                    'mappings_count' => $e->mappings_count,
                     'fingerprints_count' => $e->biometric_templates_count,
                     'fingerprints_enrolled_at' => $e->biometric_templates_max_enrolled_at,
                     'outlet_id' => $e->outlet_id,
@@ -191,16 +175,6 @@ class DashboardController extends Controller
                     'brands.outlets' => fn($q) => $q->orderBy('name')])
                 ->orderBy('name')
                 ->get(),
-            'mappings' => EmployeeMapping::with('employee')
-                ->get()
-                ->map(fn($m) => [
-                    'id' => $m->id,
-                    'machine_id' => $m->machine_id,
-                    'biometric_id_lokal' => $m->biometric_id_lokal,
-                    'employee_id' => $m->employee_id,
-                    'talenta_employee_id' => $m->employee?->talenta_employee_id,
-                    'employee_name' => $m->employee?->name,
-                ]),
             'machines' => Machine::all(),
         ]);
     }
