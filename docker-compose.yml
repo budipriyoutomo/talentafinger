@@ -65,12 +65,9 @@ services:
       - NET_ADMIN
     devices:
       - /dev/ppp:/dev/ppp
-    environment:
-      VPN_SERVER: ${VPN_SERVER}
-      VPN_PSK: ${VPN_PSK}
-      VPN_USERNAME: ${VPN_USERNAME}
-      VPN_PASSWORD: ${VPN_PASSWORD}
-      VPN_ROUTES: ${VPN_ROUTES:-200.100.100.0/24}
+    # VPN_SERVER/PSK/USERNAME/PASSWORD/ROUTES dibaca langsung dari file ini,
+    # jadi tidak bergantung pada flag --env-file saat interpolasi compose.
+    env_file: .env.docker
     # Port web dipublish di sini karena nginx berbagi namespace service ini.
     ports:
       - "${WEB_PORT:-8080}:80"
