@@ -37,7 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 python3-pip python3-venv \
         postgresql-client ca-certificates \
     && docker-php-ext-configure intl \
-    && docker-php-ext-install -j"$(nproc)" pdo_pgsql bcmath intl zip gd pcntl opcache \
+    && docker-php-ext-install -j"$(nproc)" pdo_pgsql bcmath intl zip gd pcntl opcache mbstring \
     && pecl install redis \
     && docker-php-ext-enable redis \
     && update-ca-certificates \

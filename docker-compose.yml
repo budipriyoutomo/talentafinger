@@ -10,6 +10,7 @@
 #       * queue worker outbound TCP 4370 ke mesin (job zk_sync.py).
 #
 # Sebelum 'up': salin .env.docker.example -> .env.docker dan isi nilainya.
+# Jalankan SELALU dengan: docker compose --env-file .env.docker <cmd>
 # =========================================================================
 
 x-app-build: &app-build
@@ -17,10 +18,18 @@ x-app-build: &app-build
   dockerfile: Dockerfile
   target: runtime
 
+# Rotasi log Docker agar tidak memenuhi disk di production.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_DB: ${DB_DATABASE:-adms_middleware}
       POSTGRES_USER: ${DB_USERNAME:-postgres}
@@ -36,6 +45,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    logging: *default-logging
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redisdata:/data
@@ -50,6 +60,7 @@ services:
       context: .
       dockerfile: docker/vpn/Dockerfile
     restart: unless-stopped
+    logging: *default-logging
     cap_add:
       - NET_ADMIN
     devices:
@@ -74,6 +85,7 @@ services:
     build: *app-build
     image: adms-middleware:latest
     restart: unless-stopped
+    logging: *default-logging
     env_file: .env.docker
     environment:
       CONTAINER_ROLE: app
@@ -98,6 +110,7 @@ services:
       target: web
     image: adms-nginx:latest
     restart: unless-stopped
+    logging: *default-logging
     # Berbagi namespace vpn: tidak boleh punya 'ports'/'networks' sendiri.
     network_mode: "service:vpn"
     depends_on:
@@ -110,6 +123,7 @@ services:
     build: *app-build
     image: adms-middleware:latest
     restart: unless-stopped
+    logging: *default-logging
     env_file: .env.docker
     environment:
       CONTAINER_ROLE: worker
@@ -123,11 +137,18 @@ services:
         condition: service_healthy
       vpn:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'queue:work' >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   scheduler:
     build: *app-build
     image: adms-middleware:latest
     restart: unless-stopped
+    logging: *default-logging
     env_file: .env.docker
     environment:
       CONTAINER_ROLE: scheduler
