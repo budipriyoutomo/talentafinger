@@ -21,6 +21,18 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // HTTPS diterminasi Cloudflare (proxied) -> origin menerima HTTP plus
+        // header X-Forwarded-*. Percayai proxy agar Laravel tahu skema aslinya
+        // 'https' (URL/redirect/secure-cookie benar). Origin WAJIB dibatasi
+        // hanya ke IP range Cloudflare di firewall host (lihat README_DOCKER).
+        $middleware->trustProxies(
+            at: '*',
+            headers: Request::HEADER_X_FORWARDED_FOR
+                | Request::HEADER_X_FORWARDED_HOST
+                | Request::HEADER_X_FORWARDED_PORT
+                | Request::HEADER_X_FORWARDED_PROTO,
+        );
+
         $middleware->validateCsrfTokens(except: [
             'iclock/*',
         ]);

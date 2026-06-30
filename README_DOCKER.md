@@ -1,24 +1,48 @@
 # Menjalankan ADMS Middleware dengan Docker
 
-Stack di-containerkan menjadi: **app** (PHP-FPM 8.3 + pyzk), **nginx**, **db**
-(PostgreSQL 16), **redis**, **queue** worker, **scheduler**, dan **vpn**
-(L2TP/IPSec dial-out ke MikroTik).
+Stack di-containerkan menjadi: **app** (PHP-FPM 8.3 + pyzk), **nginx**,
+**queue** worker, **scheduler**, dan **vpn** (L2TP/IPSec dial-out ke MikroTik).
+
+> **Deploy ini:** PostgreSQL **di luar VPS** (tidak ada service `db`); queue,
+> cache, dan session pakai **driver database** (tidak ada service `redis`);
+> HTTPS diterminasi **Cloudflare** (proxied) — origin melayani HTTP saja.
 
 ## Arsitektur jaringan
 
 ```
-                          ┌────────────── container vpn ──────────────┐
-  Admin (browser) ─:8080─▶│ nginx (:80)  ◀── mesin ZKTeco polling ADMS │  ppp0
+  Visitor ─https─▶ Cloudflare (proxied) ─http─▶ VPS_IP:${WEB_PORT}
+                                                      │
+                          ┌──────────────── container vpn ─────────────┐
+                          │ nginx (:80)  ◀── mesin ZKTeco polling ADMS  │  ppp0
                           │ queue worker ──── TCP 4370 ──▶ mesin ZKTeco │ ───▶ VPN
-                          └────────────────────────────────────────────┘
-        app(php-fpm)  scheduler  db  redis   ← network compose normal
+                          └─────────────────────────────────────────────┘
+        app(php-fpm)   scheduler          ← network compose normal
+                  │
+                  └──── TCP 5432 ────▶ PostgreSQL EKSTERNAL (luar VPS)
 ```
 
 - `nginx` & `queue` berbagi network namespace `vpn` (`network_mode: service:vpn`):
   - nginx dijangkau mesin lewat IP tunnel (polling absensi ADMS, inbound) **dan**
-    oleh admin lewat port host `WEB_PORT` yang dipublish container `vpn`.
+    oleh Cloudflare lewat port host `WEB_PORT` yang dipublish container `vpn`.
   - queue worker melakukan koneksi keluar TCP 4370 (`zk_sync.py`) ke mesin.
-- `app` (php-fpm), `scheduler`, `db`, `redis` di network compose biasa.
+- `app` (php-fpm) & `scheduler` di network compose biasa; keduanya konek ke
+  **PostgreSQL eksternal** (`DB_HOST`) dan menyimpan job antrean di tabel `jobs`.
+
+## HTTPS via Cloudflare (proxied)
+
+1. DNS: buat A record domain → IP VPS, **proxy ON** (awan oranye).
+2. SSL/TLS mode di dashboard Cloudflare:
+   - **Flexible** (paling cepat jalan): Cloudflare→origin HTTP. Cukup untuk mulai.
+   - **Full (strict)** (disarankan): pasang *Origin Certificate* gratis Cloudflare
+     di nginx (listen 443 ssl) lalu publish `WEB_PORT=443`. Lebih aman.
+3. Laravel sudah mempercayai header `X-Forwarded-Proto` dari Cloudflare
+   (`bootstrap/app.php` → `trustProxies`), jadi URL/redirect/secure-cookie
+   memakai `https` otomatis. Set `APP_URL=https://domain` & `SESSION_SECURE_COOKIE=true`.
+4. **Wajib keamanan:** origin (`WEB_PORT`) terbuka ke internet. Batasi firewall
+   host agar hanya menerima dari [IP range Cloudflare](https://www.cloudflare.com/ips/),
+   mis. dengan `ufw`/`iptables`, supaya tak ada yang bypass Cloudflare langsung ke IP VPS.
+   (Alternatif lebih rapi: pakai **Cloudflare Tunnel/cloudflared** agar tidak ada
+   port yang perlu dibuka sama sekali.)
 
 ## Prasyarat host (WAJIB untuk VPN)
 
@@ -47,7 +71,10 @@ modprobe af_key esp4 xfrm_user   # dukungan IPsec (umumnya sudah ada)
      minta dibuatkan admin MikroTik), `VPN_SERVER` (default 202.138.226.231),
      `VPN_ROUTES` (default `200.100.100.0/24`).
    - `MEKARI_*` untuk integrasi Talenta.
-   - `DB_PASSWORD` yang kuat.
+   - `DB_HOST`/`DB_PORT`/`DB_DATABASE`/`DB_USERNAME`/`DB_PASSWORD` → PostgreSQL
+     **eksternal**. Pastikan VPS bisa menjangkau host:port-nya dan `pg_hba`/
+     firewall penyedia DB mengizinkan IP VPS.
+   - `APP_URL=https://domain-anda`.
 
 2. Build image:
 
@@ -79,10 +106,13 @@ modprobe af_key esp4 xfrm_user   # dukungan IPsec (umumnya sudah ada)
 
    Login default: `admin@adms.local` / `password` (ganti setelah login).
 
-Dashboard: `http://<host>:8080`.
+Dashboard: `https://<domain-anda>` (lewat Cloudflare).
 
 > Semua perintah `docker compose` HARUS pakai `--env-file .env.docker` agar
 > variabel `${VPN_*}`, `${WEB_PORT}`, `${DB_*}` ikut terbaca saat interpolasi.
+>
+> **DB eksternal:** `app` tetap menjalankan `migrate --force` saat start. Migrasi
+> sudah termasuk tabel `jobs`, `cache`, `sessions` yang dibutuhkan driver database.
 
 ## Operasional
 

@@ -22,8 +22,14 @@ wait_for_tcp() {
 }
 
 # --- Tunggu dependency ---
+# PostgreSQL bisa di luar VPS (DB_HOST = host eksternal); cek TCP tetap berlaku.
 wait_for_tcp "${DB_HOST:-db}" "${DB_PORT:-5432}" "PostgreSQL"
-if [ "${REDIS_HOST:-redis}" != "null" ]; then
+
+# Redis HANYA ditunggu bila salah satu driver memang memakainya. Default deploy
+# ini pakai driver 'database' untuk queue/cache/session -> Redis dilewati.
+if [ "${QUEUE_CONNECTION:-database}" = "redis" ] \
+    || [ "${CACHE_STORE:-database}" = "redis" ] \
+    || [ "${SESSION_DRIVER:-database}" = "redis" ]; then
     wait_for_tcp "${REDIS_HOST:-redis}" "${REDIS_PORT:-6379}" "Redis"
 fi
 

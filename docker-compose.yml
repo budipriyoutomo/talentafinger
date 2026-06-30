@@ -1,13 +1,19 @@
 # =========================================================================
-# ADMS Middleware — Docker Compose
+# ADMS Middleware — Docker Compose (production: DB eksternal + queue database)
 #
 # Arsitektur jaringan:
-#   - db, redis, app(php-fpm), scheduler  -> network compose normal.
-#   - vpn (L2TP/IPSec dial-out)            -> memegang tunnel ppp0.
-#   - nginx & queue                        -> network_mode: service:vpn
+#   - app(php-fpm), scheduler            -> network compose normal.
+#   - vpn (L2TP/IPSec dial-out)          -> memegang tunnel ppp0.
+#   - nginx & queue                      -> network_mode: service:vpn
 #       * nginx reachable mesin ZKTeco via IP tunnel (polling ADMS, inbound)
-#         dan via port host yang dipublish container vpn (akses admin).
+#         dan via port host yang dipublish container vpn (di belakang Cloudflare).
 #       * queue worker outbound TCP 4370 ke mesin (job zk_sync.py).
+#
+# Catatan deploy:
+#   - PostgreSQL DI LUAR VPS (DB_HOST di .env.docker = host DB eksternal).
+#   - Queue & cache & session pakai driver DATABASE (tanpa Redis).
+#   - HTTPS diterminasi Cloudflare (proxied). Origin melayani HTTP saja;
+#     Laravel mempercayai header X-Forwarded-Proto (lihat bootstrap/app.php).
 #
 # Sebelum 'up': salin .env.docker.example -> .env.docker dan isi nilainya.
 # Jalankan SELALU dengan: docker compose --env-file .env.docker <cmd>
@@ -26,35 +32,6 @@ x-logging: &default-logging
     max-file: "3"
 
 services:
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    logging: *default-logging
-    environment:
-      POSTGRES_DB: ${DB_DATABASE:-adms_middleware}
-      POSTGRES_USER: ${DB_USERNAME:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_DATABASE:-adms_middleware}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    logging: *default-logging
-    command: ["redis-server", "--appendonly", "yes"]
-    volumes:
-      - redisdata:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
   vpn:
     build:
       context: .
@@ -69,8 +46,10 @@ services:
     # jadi tidak bergantung pada flag --env-file saat interpolasi compose.
     env_file: .env.docker
     # Port web dipublish di sini karena nginx berbagi namespace service ini.
+    # Cloudflare (proxied) menyambung ke VPS_IP:${WEB_PORT}. Untuk keamanan,
+    # batasi port ini hanya dari IP range Cloudflare (firewall host).
     ports:
-      - "${WEB_PORT:-8080}:80"
+      - "${WEB_PORT:-80}:80"
     healthcheck:
       test: ["CMD-SHELL", "ip -4 addr show ppp0 2>/dev/null | grep -q 'inet '"]
       interval: 15s
@@ -86,11 +65,6 @@ services:
     env_file: .env.docker
     environment:
       CONTAINER_ROLE: app
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     volumes:
       - storagedata:/var/www/storage
     healthcheck:
@@ -158,6 +132,4 @@ services:
         condition: service_healthy
 
 volumes:
-  pgdata:
-  redisdata:
   storagedata:
