@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Cpu, Trash2, Plus, Pencil, Power, FileClock, Users, Clock, Loader2, Gauge, Fingerprint, ShieldCheck, Database, RefreshCw } from 'lucide-react'
+import { Cpu, Trash2, Plus, Pencil, Power, FileClock, Users, Clock, Loader2, Gauge, Fingerprint, ShieldCheck, Database, RefreshCw, Plug } from 'lucide-react'
 
 const emptyForm = { serial_number: '', name: '', location: '', ip_address: '', sdk_port: 4370, is_active: true }
 
@@ -51,6 +51,34 @@ export default function Machines({ machines = [] }) {
   // Kapasitas mesin (LIVE via TCP 4370), per machine id: { loading, error, data }
   const [caps, setCaps] = useState({})
   const [clearingId, setClearingId] = useState(null)
+  const [probingId, setProbingId] = useState(null)
+
+  // Uji koneksi jalur TCP 4370 (server -> mesin) sekarang juga, lalu perbarui badge.
+  const probeTcp = async (machine) => {
+    setProbingId(machine.id)
+    try {
+      const res = await fetch(`/api/machines/${machine.id}/probe-tcp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf() },
+      })
+      const data = await res.json()
+      if (res.ok && data.ok) {
+        toast.success(
+          `TCP 4370 tersambung ke "${machine.name}"` +
+          (data.latency_ms != null ? ` (latensi ${data.latency_ms} ms).` : '.')
+        )
+      } else {
+        toast.error(`Gagal menyambung ke "${machine.name}": ${data.error || 'Tidak terjangkau'}`)
+      }
+    } catch (err) {
+      console.error('Failed to probe TCP:', err)
+      toast.error('Gagal menghubungi mesin')
+    } finally {
+      setProbingId(null)
+      // Segarkan badge status TCP dari hasil probe terbaru.
+      router.reload({ only: ['machines'] })
+    }
+  }
 
   // Hapus SEMUA log presensi (records) di mesin. Permanen di perangkat.
   const clearAttendance = (machine) => {
@@ -506,6 +534,21 @@ export default function Machines({ machines = [] }) {
                     </div>
 
                     <div className="flex flex-col items-end gap-2">
+                      <Button
+                        onClick={() => probeTcp(machine)}
+                        disabled={probingId === machine.id || !machine.ip_address}
+                        title={machine.ip_address ? 'Uji koneksi jalur TCP 4370 ke mesin' : 'Isi IP LAN mesin dulu untuk menguji koneksi'}
+                        variant="secondary"
+                        size="sm"
+                        className="gap-2"
+                      >
+                        {probingId === machine.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Plug className="h-4 w-4" />
+                        )}
+                        Connect TCP
+                      </Button>
                       <Button
                         onClick={() => syncTime(machine)}
                         disabled={syncingId === machine.id}

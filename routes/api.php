@@ -68,6 +68,36 @@ Route::post('/machines/{id}/sync-time', function ($id) {
     ]);
 });
 
+// Probe MANUAL jalur TCP 4370 (server -> mesin) untuk satu mesin, sekarang juga.
+// Sama seperti command terjadwal machine:probe-tcp tapi dipicu dari tombol UI;
+// menyimpan hasil ke kolom tcp_* supaya badge status langsung ikut ter-update.
+Route::post('/machines/{id}/probe-tcp', function ($id) {
+    $machine = Machine::findOrFail($id);
+
+    if (! $machine->ip_address) {
+        return response()->json([
+            'ok' => false,
+            'error' => "Mesin {$machine->name} belum punya IP LAN. Isi IP dulu untuk menguji jalur TCP 4370.",
+        ], 422);
+    }
+
+    $res = app(App\Services\ZkSyncService::class)->ping($machine);
+    $online = (bool) ($res['ok'] ?? false);
+
+    $machine->update([
+        'tcp_checked_at' => now(),
+        'tcp_online' => $online,
+        'tcp_latency_ms' => $online ? ($res['latency_ms'] ?? null) : null,
+        'tcp_error' => $online ? null : ($res['error'] ?? 'Tidak terjangkau'),
+    ]);
+
+    return response()->json([
+        'ok' => $online,
+        'latency_ms' => $online ? ($res['latency_ms'] ?? null) : null,
+        'error' => $online ? null : ($res['error'] ?? 'Tidak terjangkau'),
+    ], $online ? 200 : 422);
+});
+
 // ===== Sync sidik jari via TCP 4370 (pyzk) =====
 // Tarik template 1 PIN dari mesin sumber, pasang ke mesin tujuan.
 Route::post('/fingerprint/sync', function (Illuminate\Http\Request $request) {
