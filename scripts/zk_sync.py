@@ -10,12 +10,14 @@ Action:
   delete {ip, port, pin}                          -> {ok, deleted}
   list   {ip, port}                               -> {ok, device_users, users[]}
   info   {ip, port}                               -> {ok, firmware, ...}
+  ping   {ip, port}                               -> {ok, latency_ms}   (probe TCP 4370)
 
 template item: {fid:int, valid:int, tmp:"<base64 bytes>"}
 Semua hasil selalu JSON; error dikembalikan sebagai {ok:false, error:"..."} (exit 0).
 """
 import sys
 import json
+import time
 import base64
 
 try:
@@ -162,6 +164,18 @@ def do_info(req):
         conn.disconnect()
 
 
+def do_ping(req):
+    """Probe ringan kesehatan jalur TCP 4370: cukup connect lalu disconnect,
+    tanpa membaca data berat. Dipakai monitor status (server -> mesin).
+    Kembalikan latensi ms saat sukses."""
+    t0 = time.time()
+    conn = get_conn(req)
+    try:
+        return {"ok": True, "latency_ms": int((time.time() - t0) * 1000)}
+    finally:
+        conn.disconnect()
+
+
 def do_clear_attendance(req):
     """Hapus SEMUA log presensi (records) di mesin. Protokol ZK tak punya
     perintah hapus parsial -> selalu clear total. Kembalikan jumlah sebelum/sesudah."""
@@ -182,7 +196,7 @@ def do_clear_attendance(req):
 
 
 ACTIONS = {"pull": do_pull, "push": do_push, "delete": do_delete, "list": do_list,
-           "info": do_info, "clear_attendance": do_clear_attendance}
+           "info": do_info, "ping": do_ping, "clear_attendance": do_clear_attendance}
 
 
 def main():

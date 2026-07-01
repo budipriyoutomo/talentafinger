@@ -187,6 +187,27 @@ class SettingSeeder extends Seeder
                     . 'jadi interval besar biasanya cukup.',
                 'default' => '1440',
             ],
+
+            // ===== Monitor jalur TCP 4370 (sidik jari) =====
+            // Status ADMS (mesin -> server) terpisah dari jalur TCP (server -> mesin).
+            // Probe ini mengecek apakah port 4370 mesin terjangkau dari server.
+            [
+                'key' => 'machine.tcp_probe',
+                'group' => 'machine',
+                'type' => 'boolean',
+                'label' => 'Aktifkan Monitor TCP 4370',
+                'description' => 'Bila aktif, server rutin mengecek apakah port 4370 tiap mesin aktif ber-IP terjangkau '
+                    . '(jalur sidik jari). Statusnya tampil sebagai badge terpisah dari status ADMS di halaman Machines.',
+                'default' => '0',
+            ],
+            [
+                'key' => 'machine.tcp_probe_interval',
+                'group' => 'machine',
+                'type' => 'number',
+                'label' => 'Interval Monitor TCP (menit)',
+                'description' => 'Jeda antar siklus probe TCP 4370. Mis. 5 = cek tiap 5 menit.',
+                'default' => '5',
+            ],
         ];
     }
 }

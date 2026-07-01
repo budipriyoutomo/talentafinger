@@ -16,3 +16,8 @@ Schedule::command('attendance:auto-send')->everyMinute()->withoutOverlapping();
 // Auto-sync jam mesin. Command menahan diri sesuai pengaturan (on/off,
 // interval) dan hanya mengantrekan untuk mesin aktif & online.
 Schedule::command('machine:auto-sync-time')->everyMinute()->withoutOverlapping();
+
+// Probe status jalur TCP 4370 (server -> mesin) untuk monitor sidik jari.
+// Command menahan diri sesuai pengaturan (on/off, interval) dan menyimpan
+// hasil ke kolom tcp_* tiap mesin aktif ber-IP.
+Schedule::command('machine:probe-tcp')->everyMinute()->withoutOverlapping();

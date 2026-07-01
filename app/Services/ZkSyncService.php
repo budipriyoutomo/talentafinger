@@ -58,6 +58,15 @@ class ZkSyncService
         return $this->run(['action' => 'info'] + $this->conn($m));
     }
 
+    /**
+     * Probe ringan kesehatan jalur TCP 4370 (server -> mesin). Timeout pendek
+     * supaya monitor tidak menggantung lama pada mesin yang portnya mati.
+     */
+    public function ping(Machine $m, int $timeout = 5): array
+    {
+        return $this->run(['action' => 'ping', 'timeout' => $timeout] + $this->conn($m));
+    }
+
     public function listUsers(Machine $m): array
     {
         return $this->run(['action' => 'list'] + $this->conn($m));

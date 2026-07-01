@@ -53,6 +53,12 @@ class DashboardController extends Controller
                 'last_seen_at' => $m->last_seen_at,
                 'is_active' => $m->is_active,
                 'is_online' => $m->isOnline(),
+                // Status jalur TCP 4370 (server -> mesin), terpisah dari ADMS.
+                // null = belum/basi, true = ready, false = tak terjangkau.
+                'tcp_ready' => $m->tcpReady(),
+                'tcp_checked_at' => $m->tcp_checked_at,
+                'tcp_latency_ms' => $m->tcp_latency_ms,
+                'tcp_error' => $m->tcp_error,
                 'logs_count' => $m->attendance_logs_count,
                 'last_log_at' => $m->attendanceLogs()->max('timestamp'),
             ]);

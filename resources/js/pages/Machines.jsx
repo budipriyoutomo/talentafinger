@@ -356,8 +356,34 @@ export default function Machines({ machines = [] }) {
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">{machine.name}</h3>
                         <Badge variant={machine.is_online ? 'success' : 'secondary'}>
-                          {machine.is_online ? 'online' : 'offline'}
+                          ADMS: {machine.is_online ? 'online' : 'offline'}
                         </Badge>
+                        {machine.ip_address && (() => {
+                          // Status jalur TCP 4370 (server -> mesin), independen dari ADMS.
+                          // null = monitor mati / belum diprobe / hasil basi.
+                          if (machine.tcp_ready === true) {
+                            return (
+                              <Badge variant="success" title={
+                                (machine.tcp_latency_ms != null ? `latensi ${machine.tcp_latency_ms} ms · ` : '') +
+                                (machine.tcp_checked_at ? `dicek ${new Date(machine.tcp_checked_at).toLocaleString()}` : '')
+                              }>
+                                TCP 4370: ready
+                              </Badge>
+                            )
+                          }
+                          if (machine.tcp_ready === false) {
+                            return (
+                              <Badge variant="destructive" title={machine.tcp_error || 'Tidak terjangkau'}>
+                                TCP 4370: unreachable
+                              </Badge>
+                            )
+                          }
+                          return (
+                            <Badge variant="secondary" title="Monitor TCP nonaktif atau belum diperiksa (aktifkan di Settings).">
+                              TCP 4370: —
+                            </Badge>
+                          )
+                        })()}
                         {!machine.is_active && <Badge variant="destructive">nonaktif</Badge>}
                       </div>
                       <p className="text-sm text-slate-600 dark:text-slate-400">Serial: {machine.serial_number}</p>

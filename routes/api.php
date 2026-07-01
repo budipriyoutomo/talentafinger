@@ -18,6 +18,8 @@ Route::get('/machines', function () {
     // (window 5 menit via isOnline()) supaya heartbeat monitor akurat.
     return Machine::all()->each(function ($m) {
         $m->status = $m->isOnline() ? 'online' : 'offline';
+        // Status jalur TCP 4370 (server -> mesin), terpisah dari status ADMS.
+        $m->tcp_ready = $m->tcpReady();
     });
 });
 
