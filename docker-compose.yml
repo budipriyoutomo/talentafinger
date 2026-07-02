@@ -2,11 +2,13 @@
 # ADMS Middleware — Docker Compose (production: DB eksternal + queue database)
 #
 # Arsitektur jaringan:
-#   - app(php-fpm), scheduler            -> network compose normal.
+#   - scheduler                          -> network compose normal.
 #   - vpn (L2TP/IPSec dial-out)          -> memegang tunnel ppp0.
-#   - nginx & queue                      -> network_mode: service:vpn
+#   - nginx, app & queue                 -> network_mode: service:vpn
 #       * nginx reachable mesin ZKTeco via IP tunnel (polling ADMS, inbound)
 #         dan via port host yang dipublish container vpn (di belakang Cloudflare).
+#       * app (php-fpm) outbound TCP 4370 ke mesin (ZkSyncService sinkron
+#         dari HTTP request); nginx mengaksesnya via 127.0.0.1:9000.
 #       * queue worker outbound TCP 4370 ke mesin (job zk_sync.py).
 #
 # Catatan deploy:
@@ -65,6 +67,13 @@ services:
     env_file: .env.docker
     environment:
       CONTAINER_ROLE: app
+    # Berbagi namespace vpn agar ZkSyncService (dipicu HTTP request, sinkron)
+    # bisa outbound TCP 4370 ke mesin lewat tunnel. Tidak boleh punya
+    # 'ports'/'networks' sendiri.
+    network_mode: "service:vpn"
+    depends_on:
+      vpn:
+        condition: service_healthy
     volumes:
       - storagedata:/var/www/storage
     healthcheck:
