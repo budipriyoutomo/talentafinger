@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Machine;
 use App\Models\Setting;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -32,6 +33,17 @@ class ZkSyncService
             ];
         }
 
+        // Jejak debug koneksi: ip_hex mengekspos whitespace/karakter tersembunyi
+        // yang tak terlihat di log biasa. Template sengaja TIDAK ikut di-log.
+        Log::debug('ZkSyncService: eksekusi zk_sync.py', [
+            'python' => $python,
+            'action' => $payload['action'] ?? null,
+            'ip' => $payload['ip'] ?? null,
+            'ip_hex' => isset($payload['ip']) ? bin2hex((string) $payload['ip']) : null,
+            'port' => $payload['port'] ?? null,
+            'timeout' => $payload['timeout'] ?? null,
+        ]);
+
         $result = Process::timeout(120)
             ->env($env)
             ->input(json_encode($payload))
@@ -50,7 +62,13 @@ class ZkSyncService
 
     private function conn(Machine $m): array
     {
-        return ['ip' => $m->ip_address, 'port' => $m->sdk_port ?: Setting::value('adms.sdk_port', 4370)];
+        // trim + cast eksplisit: data bisa masuk tanpa lewat validasi API
+        // (seeder/tinker/import), dan whitespace tersembunyi di IP membuat
+        // pyzk timeout tanpa pesan yang menjelaskan penyebabnya.
+        return [
+            'ip' => trim((string) $m->ip_address),
+            'port' => (int) ($m->sdk_port ?: Setting::value('adms.sdk_port', 4370)),
+        ];
     }
 
     public function info(Machine $m): array
