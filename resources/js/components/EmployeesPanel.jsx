@@ -13,7 +13,7 @@ import EmployeeFingerprintDialog from '@/components/EmployeeFingerprintDialog'
 import BulkDistributeDialog from '@/components/BulkDistributeDialog'
 
 // company_id & brand_id hanya untuk dropdown cascading; yang disimpan ke
-// karyawan cuma outlet_id (brand & company tersirat dari outlet).
+// karyawan cuma outlet_ids (banyak outlet; brand & company tersirat dari outlet).
 const emptyForm = {
   name: '',
   talenta_employee_id: '',
@@ -21,7 +21,7 @@ const emptyForm = {
   biometric_id: '',
   company_id: '',
   brand_id: '',
-  outlet_id: '',
+  outlet_ids: [],
   device_privilege: 0,
   is_active: true,
 }
@@ -60,10 +60,21 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
     () =>
       companies.flatMap((c) =>
         (c.brands ?? []).flatMap((b) =>
-          (b.outlets ?? []).map((o) => ({ id: o.id, name: o.name, brand_id: b.id }))
+          (b.outlets ?? []).map((o) => ({
+            id: o.id,
+            name: o.name,
+            brand_id: b.id,
+            brand_name: b.name,
+            company_name: c.name,
+          }))
         )
       ),
     [companies]
+  )
+  // Lookup cepat metadata outlet by id (untuk chip & kolom daftar).
+  const outletMeta = useMemo(
+    () => Object.fromEntries(allOutlets.map((o) => [o.id, o])),
+    [allOutlets]
   )
   // Outlet yang ditampilkan mengikuti brand terpilih (kalau ada).
   const filterOutletOptions = useMemo(
@@ -80,8 +91,9 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
   const filteredEmployees = useMemo(
     () =>
       employees.filter((e) => {
-        if (brandFilter && e.brand_id !== brandFilter) return false
-        if (outletFilter && e.outlet_id !== outletFilter) return false
+        const outlets = e.outlets ?? []
+        if (brandFilter && !outlets.some((o) => o.brand_id === brandFilter)) return false
+        if (outletFilter && !outlets.some((o) => o.id === outletFilter)) return false
         return true
       }),
     [employees, brandFilter, outletFilter]
@@ -130,9 +142,9 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
       talenta_employee_id: emp.talenta_employee_id ?? '',
       employee_code: emp.employee_code ?? '',
       biometric_id: emp.biometric_id ?? '',
-      company_id: emp.company_id ?? '',
-      brand_id: emp.brand_id ?? '',
-      outlet_id: emp.outlet_id ?? '',
+      company_id: '',
+      brand_id: '',
+      outlet_ids: (emp.outlets ?? []).map((o) => o.id),
       device_privilege: emp.device_privilege ?? 0,
       is_active: emp.is_active,
     })
@@ -145,23 +157,33 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
     setShowForm(false)
   }
 
-  // Ganti company -> reset brand & outlet di bawahnya supaya tidak nyangkut.
+  // Ganti company -> reset brand di bawahnya supaya tidak nyangkut.
   const onCompanyChange = (company_id) =>
-    setFormData((f) => ({ ...f, company_id, brand_id: '', outlet_id: '' }))
+    setFormData((f) => ({ ...f, company_id, brand_id: '' }))
   const onBrandChange = (brand_id) =>
-    setFormData((f) => ({ ...f, brand_id, outlet_id: '' }))
+    setFormData((f) => ({ ...f, brand_id }))
+
+  // Tambah/hapus outlet dari daftar penempatan karyawan (banyak outlet).
+  const addOutlet = (outlet_id) => {
+    if (!outlet_id) return
+    setFormData((f) =>
+      f.outlet_ids.includes(outlet_id) ? f : { ...f, outlet_ids: [...f.outlet_ids, outlet_id] }
+    )
+  }
+  const removeOutlet = (outlet_id) =>
+    setFormData((f) => ({ ...f, outlet_ids: f.outlet_ids.filter((id) => id !== outlet_id) }))
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     const url = editingId ? `/api/employees/${editingId}` : '/api/employees'
     const method = editingId ? 'PUT' : 'POST'
-    // Backend hanya butuh outlet_id (+ field karyawan); company/brand cuma alat bantu UI.
+    // Backend butuh outlet_ids (+ field karyawan); company/brand cuma alat bantu UI.
     const payload = {
       name: formData.name,
       talenta_employee_id: formData.talenta_employee_id,
       employee_code: formData.employee_code,
       biometric_id: formData.biometric_id || null,
-      outlet_id: formData.outlet_id || null,
+      outlet_ids: formData.outlet_ids,
       device_privilege: Number(formData.device_privilege) || 0,
       is_active: formData.is_active,
     }
@@ -269,14 +291,18 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
         id: 'outlet',
         header: 'Outlet',
         cell: ({ row }) => {
-          const e = row.original
-          if (!e.outlet_name) return <span className="text-slate-400">-</span>
+          const outlets = row.original.outlets ?? []
+          if (outlets.length === 0) return <span className="text-slate-400">-</span>
           return (
-            <div className="text-sm">
-              <div className="font-medium">{e.outlet_name}</div>
-              <div className="text-xs text-slate-500">
-                {[e.company_name, e.brand_name].filter(Boolean).join(' / ')}
-              </div>
+            <div className="flex flex-col gap-1">
+              {outlets.map((o) => (
+                <div key={o.id} className="text-sm">
+                  <div className="font-medium">{o.name}</div>
+                  <div className="text-xs text-slate-500">
+                    {[o.company_name, o.brand_name].filter(Boolean).join(' / ')}
+                  </div>
+                </div>
+              ))}
             </div>
           )
         },
@@ -419,16 +445,54 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Outlet</label>
                   <Select
-                    value={formData.outlet_id}
-                    onChange={(e) => setFormData({ ...formData, outlet_id: e.target.value })}
+                    value=""
+                    onChange={(e) => { addOutlet(e.target.value); }}
                     disabled={!formData.brand_id}
                   >
-                    <option value="">— pilih outlet —</option>
-                    {outletOptions.map((o) => (
-                      <option key={o.id} value={o.id}>{o.name}</option>
-                    ))}
+                    <option value="">— tambah outlet —</option>
+                    {outletOptions
+                      .filter((o) => !formData.outlet_ids.includes(o.id))
+                      .map((o) => (
+                        <option key={o.id} value={o.id}>{o.name}</option>
+                      ))}
                   </Select>
+                  <p className="text-xs text-slate-500">
+                    Pilih untuk menambah. Satu karyawan boleh punya lebih dari satu outlet.
+                  </p>
                 </div>
+              </div>
+
+              {/* Daftar outlet terpilih (banyak) */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                  Outlet Terdaftar ({formData.outlet_ids.length})
+                </label>
+                {formData.outlet_ids.length === 0 ? (
+                  <p className="text-sm text-slate-400">Belum ada outlet dipilih.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {formData.outlet_ids.map((id) => {
+                      const o = outletMeta[id]
+                      return (
+                        <span
+                          key={id}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-sm"
+                        >
+                          <span className="font-medium">{o?.name ?? id}</span>
+                          {o?.brand_name && <span className="text-xs text-slate-500">· {o.brand_name}</span>}
+                          <button
+                            type="button"
+                            onClick={() => removeOutlet(id)}
+                            className="text-slate-400 hover:text-red-600"
+                            title="Hapus outlet"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </span>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

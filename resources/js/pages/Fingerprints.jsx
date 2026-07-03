@@ -13,7 +13,7 @@ function csrf() {
   return document.querySelector('meta[name="csrf-token"]').content
 }
 
-export default function Fingerprints({ machines = [] }) {
+export default function Fingerprints({ machines = [], employeesByPin = {} }) {
   const withIp = machines.filter((m) => m.ip_address)
   const [sourceId, setSourceId] = useState(withIp[0]?.id || '')
   const [users, setUsers] = useState([])
@@ -379,6 +379,29 @@ export default function Fingerprints({ machines = [] }) {
         cell: ({ row }) => row.getValue('name') || <span className="text-slate-400">-</span>,
       },
       {
+        id: 'brand_outlet',
+        header: 'Brand - Outlet',
+        cell: ({ row }) => {
+          const emp = employeesByPin[String(row.original.pin)]
+          if (!emp) {
+            return <span className="text-xs text-amber-600">belum terdaftar</span>
+          }
+          const outlets = emp.outlets ?? []
+          if (outlets.length === 0) {
+            return <span className="text-xs text-slate-400">tanpa outlet</span>
+          }
+          return (
+            <div className="flex flex-col gap-0.5">
+              {outlets.map((o, i) => (
+                <div key={i} className="text-sm">
+                  {[o.brand_name, o.outlet_name].filter(Boolean).join(' - ')}
+                </div>
+              ))}
+            </div>
+          )
+        },
+      },
+      {
         accessorKey: 'fingers',
         header: 'Jumlah Jari',
         cell: ({ row }) => (
@@ -446,7 +469,7 @@ export default function Fingerprints({ machines = [] }) {
         ),
       },
     ],
-    [selected, allSelected, allPins, deletingPin, savingPin, savedPins, sourceId, captureOnSave]
+    [selected, allSelected, allPins, deletingPin, savingPin, savedPins, sourceId, captureOnSave, employeesByPin]
   )
 
   const pushUsers = useMemo(

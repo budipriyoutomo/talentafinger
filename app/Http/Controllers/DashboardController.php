@@ -89,9 +89,9 @@ class DashboardController extends Controller
         if ($brandId || $outletId) {
             $orgPins = Employee::query()
                 ->whereNotNull('biometric_id')
-                ->when($outletId, fn($q) => $q->where('outlet_id', $outletId))
+                ->when($outletId, fn($q) => $q->whereHas('outlets', fn($qq) => $qq->where('outlets.id', $outletId)))
                 ->when($brandId && ! $outletId,
-                    fn($q) => $q->whereHas('outlet', fn($qq) => $qq->where('brand_id', $brandId)))
+                    fn($q) => $q->whereHas('outlets', fn($qq) => $qq->where('brand_id', $brandId)))
                 ->pluck('biometric_id');
         }
 
@@ -156,7 +156,7 @@ class DashboardController extends Controller
             'employees' => Employee::query()
                 ->withCount('biometricTemplates')
                 ->withMax('biometricTemplates', 'enrolled_at')
-                ->with('outlet.brand.company')
+                ->with('outlets.brand.company')
                 ->orderBy('name')
                 ->get()
                 ->map(fn($e) => [
@@ -169,12 +169,17 @@ class DashboardController extends Controller
                     'device_privilege' => $e->device_privilege,
                     'fingerprints_count' => $e->biometric_templates_count,
                     'fingerprints_enrolled_at' => $e->biometric_templates_max_enrolled_at,
-                    'outlet_id' => $e->outlet_id,
-                    'outlet_name' => $e->outlet?->name,
-                    'brand_id' => $e->outlet?->brand?->id,
-                    'brand_name' => $e->outlet?->brand?->name,
-                    'company_id' => $e->outlet?->brand?->company?->id,
-                    'company_name' => $e->outlet?->brand?->company?->name,
+                    // Banyak outlet per karyawan; brand & company tersirat per outlet.
+                    'outlets' => $e->outlets
+                        ->sortBy('name')
+                        ->map(fn($o) => [
+                            'id' => $o->id,
+                            'name' => $o->name,
+                            'brand_id' => $o->brand?->id,
+                            'brand_name' => $o->brand?->name,
+                            'company_id' => $o->brand?->company?->id,
+                            'company_name' => $o->brand?->company?->name,
+                        ])->values(),
                 ]),
             // Hierarki untuk dropdown cascading di form karyawan + panel struktur.
             'companies' => Company::with(['brands' => fn($q) => $q->orderBy('name'),
@@ -198,8 +203,25 @@ class DashboardController extends Controller
             'is_active' => $m->is_active,
         ]);
 
+        // Peta PIN (biometric_id) -> data karyawan, untuk mencocokkan user yang
+        // dibaca LIVE dari mesin dengan master & menampilkan Brand - Outlet-nya.
+        $employeesByPin = Employee::whereNotNull('biometric_id')
+            ->with('outlets.brand')
+            ->get()
+            ->mapWithKeys(fn($e) => [(string) $e->biometric_id => [
+                'id' => $e->id,
+                'name' => $e->name,
+                'outlets' => $e->outlets
+                    ->sortBy('name')
+                    ->map(fn($o) => [
+                        'outlet_name' => $o->name,
+                        'brand_name' => $o->brand?->name,
+                    ])->values(),
+            ]]);
+
         return Inertia::render('Fingerprints', [
             'machines' => $machines,
+            'employeesByPin' => $employeesByPin,
         ]);
     }
 

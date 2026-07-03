@@ -434,31 +434,53 @@ Route::get('/employees', function () {
 });
 
 Route::post('/employees', function (Illuminate\Http\Request $request) {
-    return Employee::create($request->validate([
+    $data = $request->validate([
         'name' => 'required',
         'talenta_employee_id' => 'required|unique:employees,talenta_employee_id',
         'employee_code' => 'nullable',
         'biometric_id' => 'nullable|string|max:50',
-        'outlet_id' => 'nullable|exists:outlets,id',
+        'outlet_ids' => 'nullable|array',
+        'outlet_ids.*' => 'exists:outlets,id',
         'device_privilege' => 'nullable|integer|min:0|max:14',
         'is_active' => 'boolean',
-    ]));
+    ]);
+
+    $outletIds = array_values(array_unique($data['outlet_ids'] ?? []));
+    unset($data['outlet_ids']);
+
+    $employee = Employee::create($data);
+    $employee->outlets()->sync($outletIds);
+
+    return $employee->load('outlets');
 });
 
 Route::put('/employees/{id}', function (Illuminate\Http\Request $request, $id) {
     $employee = Employee::findOrFail($id);
 
-    $employee->update($request->validate([
+    $data = $request->validate([
         'name' => 'required',
         'talenta_employee_id' => ['required', Rule::unique('employees', 'talenta_employee_id')->ignore($id)],
         'employee_code' => 'nullable',
         'biometric_id' => 'nullable|string|max:50',
-        'outlet_id' => 'nullable|exists:outlets,id',
+        'outlet_ids' => 'nullable|array',
+        'outlet_ids.*' => 'exists:outlets,id',
         'device_privilege' => 'nullable|integer|min:0|max:14',
         'is_active' => 'boolean',
-    ]));
+    ]);
 
-    return $employee;
+    $outletIds = array_key_exists('outlet_ids', $data)
+        ? array_values(array_unique($data['outlet_ids'] ?? []))
+        : null;
+    unset($data['outlet_ids']);
+
+    $employee->update($data);
+
+    // Hanya sinkronkan outlet bila key dikirim (hindari mengosongkan tak sengaja).
+    if ($outletIds !== null) {
+        $employee->outlets()->sync($outletIds);
+    }
+
+    return $employee->load('outlets');
 });
 
 Route::delete('/employees/{id}', function ($id) {

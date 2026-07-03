@@ -16,7 +16,6 @@ class Employee extends Model
         'talenta_employee_id',
         'employee_code',
         'biometric_id',
-        'outlet_id',
         'device_privilege',
         'is_active',
     ];
@@ -26,9 +25,13 @@ class Employee extends Model
         'device_privilege' => 'integer',
     ];
 
-    public function outlet()
+    /**
+     * Satu karyawan bisa terdaftar di banyak outlet (pivot employee_outlet).
+     * Brand & company tersirat dari masing-masing outlet.
+     */
+    public function outlets()
     {
-        return $this->belongsTo(Outlet::class);
+        return $this->belongsToMany(Outlet::class, 'employee_outlet')->withTimestamps();
     }
 
     public function biometricTemplates()
