@@ -75,6 +75,9 @@ class DashboardController extends Controller
         $outletId = $request->query('outlet_id');
         $dateFrom = $request->query('date_from');
         $dateTo = $request->query('date_to');
+        // Tab "Gagal" mengirim status=failed; whitelist supaya tak sembarang nilai.
+        $status = $request->query('status');
+        $status = in_array($status, ['pending', 'sent', 'failed', 'duplicate'], true) ? $status : null;
 
         // Preload semua karyawan ber-Biometric ID sekali, dipetakan per PIN, supaya
         // nama karyawan log bisa di-resolve tanpa query berulang (hindari N+1).
@@ -100,6 +103,7 @@ class DashboardController extends Controller
 
         $paginator = AttendanceLog::with('machine')
             ->when($machineId, fn($q) => $q->where('machine_id', $machineId))
+            ->when($status, fn($q) => $q->where('status_sync', $status))
             ->when($dateFrom, fn($q) => $q->whereDate('timestamp', '>=', $dateFrom))
             ->when($dateTo, fn($q) => $q->whereDate('timestamp', '<=', $dateTo))
             ->when($orgPins !== null, function ($q) use ($orgPins) {
@@ -142,6 +146,7 @@ class DashboardController extends Controller
                 'outlet_id' => $outletId,
                 'date_from' => $dateFrom,
                 'date_to' => $dateTo,
+                'status' => $status,
             ],
         ]);
     }

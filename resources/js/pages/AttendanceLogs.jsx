@@ -9,10 +9,16 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
-import { Download, Send, Loader2, X, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
+import { Download, Send, Loader2, X, ChevronLeft, ChevronRight, RefreshCw, ListChecks, AlertTriangle } from 'lucide-react'
 
 // Pilihan jeda auto-refresh (detik).
 const REFRESH_INTERVAL = 15
+
+// Tab = preset status_sync yang dikirim ke server ('' = semua).
+const TABS = [
+  { key: '', label: 'Semua Log', icon: ListChecks },
+  { key: 'failed', label: 'Gagal', icon: AlertTriangle },
+]
 
 // Format timestamp jadi "YYYY-MM-DD HH:mm:ss" (waktu lokal).
 const formatTimestamp = (value) => {
@@ -48,9 +54,10 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
     [outlets, filters.brand_id]
   )
 
-  // Terapkan filter ke server (gabungkan machine_id + brand/outlet + rentang tanggal).
+  // Terapkan filter ke server (gabungkan status tab + machine_id + brand/outlet + tanggal).
   const applyFilters = (next) => {
     const merged = {
+      status: filters.status || '',
       machine_id: filters.machine_id || '',
       brand_id: filters.brand_id || '',
       outlet_id: filters.outlet_id || '',
@@ -77,6 +84,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
   const goToPage = (page) => {
     const params = Object.fromEntries(
       Object.entries({
+        status: filters.status || '',
         machine_id: filters.machine_id || '',
         brand_id: filters.brand_id || '',
         outlet_id: filters.outlet_id || '',
@@ -92,6 +100,23 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
     })
   }
 
+  // Ganti tab (status). Reset ke halaman 1; filter lain dipertahankan.
+  const activeTab = filters.status || ''
+  const switchTab = (status) => {
+    if (status === activeTab) return
+    applyFilters({ status })
+  }
+
+  // Reset semua filter tapi tetap di tab (status) yang aktif.
+  const resetFilters = () => {
+    const params = filters.status ? { status: filters.status } : {}
+    router.get('/attendance-logs', params, {
+      preserveScroll: true,
+      only: ['logs', 'filters', 'pagination'],
+    })
+  }
+
+  // "Filter" di sini = filter selain tab status (mesin/brand/outlet/tanggal).
   const hasFilters =
     filters.machine_id || filters.brand_id || filters.outlet_id || filters.date_from || filters.date_to
 
@@ -305,13 +330,36 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
           </div>
         </div>
 
+        {/* Tab switcher: Semua Log vs Gagal */}
+        <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800">
+          {TABS.map(({ key, label, icon: Icon }) => (
+            <Button
+              key={key}
+              variant="ghost"
+              onClick={() => switchTab(key)}
+              className={`gap-2 rounded-none border-b-2 ${
+                activeTab === key
+                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                  : 'border-transparent text-slate-500'
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </Button>
+          ))}
+        </div>
+
         {/* Data Table */}
         <Card>
           <CardHeader>
             <div className="space-y-4">
               <div>
-                <CardTitle>Log Viewer</CardTitle>
-                <CardDescription>Click column headers to sort • Use search to filter</CardDescription>
+                <CardTitle>{activeTab === 'failed' ? 'Data Gagal Kirim' : 'Log Viewer'}</CardTitle>
+                <CardDescription>
+                  {activeTab === 'failed'
+                    ? 'Semua absensi berstatus failed • klik "Kirim" untuk coba ulang'
+                    : 'Click column headers to sort • Use search to filter'}
+                </CardDescription>
               </div>
               <div className="flex flex-col sm:flex-row sm:items-end gap-3">
                 <div className="space-y-1.5 sm:w-56">
@@ -388,7 +436,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
                   <Button
                     variant="outline"
                     className="gap-2"
-                    onClick={() => router.get('/attendance-logs', {}, { preserveScroll: true, only: ['logs', 'filters', 'pagination'] })}
+                    onClick={resetFilters}
                   >
                     <X className="h-4 w-4" />
                     Reset

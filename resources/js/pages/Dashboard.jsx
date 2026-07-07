@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Head } from '@inertiajs/react'
+import { Head, Link } from '@inertiajs/react'
 import Layout from '../layouts/Layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -25,17 +25,20 @@ export default function Dashboard({ machines = [], stats = {} }) {
     return () => clearInterval(interval)
   }, [])
 
-  const StatCard = ({ icon: Icon, label, value, color }) => (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">{label}</CardTitle>
-        <Icon className={`h-4 w-4 ${color}`} />
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
-      </CardContent>
-    </Card>
-  )
+  const StatCard = ({ icon: Icon, label, value, color, href }) => {
+    const card = (
+      <Card className={href ? 'transition-colors hover:bg-slate-50 dark:hover:bg-slate-900' : ''}>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">{label}</CardTitle>
+          <Icon className={`h-4 w-4 ${color}`} />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{value}</div>
+        </CardContent>
+      </Card>
+    )
+    return href ? <Link href={href} className="block">{card}</Link> : card
+  }
 
   return (
     <Layout>
@@ -74,6 +77,7 @@ export default function Dashboard({ machines = [], stats = {} }) {
             label="Failed"
             value={stats_?.failed_count || 0}
             color="text-red-600"
+            href="/attendance-logs?status=failed"
           />
         </div>
 

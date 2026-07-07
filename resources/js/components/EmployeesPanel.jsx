@@ -47,13 +47,37 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
   // Seleksi baris untuk sebar massal + status dialog sebar massal.
   const [selected, setSelected] = useState({})
   const [bulkOpen, setBulkOpen] = useState(false)
-  // Filter daftar karyawan berdasarkan Brand & Outlet (client-side).
+  // Filter daftar karyawan (semua client-side).
+  const [companyFilter, setCompanyFilter] = useState('')
   const [brandFilter, setBrandFilter] = useState('')
   const [outletFilter, setOutletFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')       // '' | 'active' | 'inactive'
+  const [privilegeFilter, setPrivilegeFilter] = useState('') // '' | '0' | '14'
+  const [fpFilter, setFpFilter] = useState('')               // '' | 'has' | 'none'
+  const [biometricFilter, setBiometricFilter] = useState('') // '' | 'has' | 'none'
+  const [placementFilter, setPlacementFilter] = useState('') // '' | 'placed' | 'unplaced'
+
+  const hasActiveFilters =
+    companyFilter || brandFilter || outletFilter || statusFilter ||
+    privilegeFilter || fpFilter || biometricFilter || placementFilter
+
+  const resetFilters = () => {
+    setCompanyFilter('')
+    setBrandFilter('')
+    setOutletFilter('')
+    setStatusFilter('')
+    setPrivilegeFilter('')
+    setFpFilter('')
+    setBiometricFilter('')
+    setPlacementFilter('')
+  }
 
   // Daftar brand & outlet diratakan dari hierarki companies untuk dropdown filter.
   const allBrands = useMemo(
-    () => companies.flatMap((c) => (c.brands ?? []).map((b) => ({ id: b.id, name: b.name }))),
+    () =>
+      companies.flatMap((c) =>
+        (c.brands ?? []).map((b) => ({ id: b.id, name: b.name, company_id: c.id }))
+      ),
     [companies]
   )
   const allOutlets = useMemo(
@@ -65,6 +89,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
             name: o.name,
             brand_id: b.id,
             brand_name: b.name,
+            company_id: c.id,
             company_name: c.name,
           }))
         )
@@ -76,12 +101,28 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
     () => Object.fromEntries(allOutlets.map((o) => [o.id, o])),
     [allOutlets]
   )
-  // Outlet yang ditampilkan mengikuti brand terpilih (kalau ada).
+  // Brand yang ditampilkan mengikuti company terpilih (kalau ada).
+  const filterBrandOptions = useMemo(
+    () => (companyFilter ? allBrands.filter((b) => b.company_id === companyFilter) : allBrands),
+    [allBrands, companyFilter]
+  )
+  // Outlet yang ditampilkan mengikuti company & brand terpilih (kalau ada).
   const filterOutletOptions = useMemo(
-    () => (brandFilter ? allOutlets.filter((o) => o.brand_id === brandFilter) : allOutlets),
-    [allOutlets, brandFilter]
+    () =>
+      allOutlets.filter(
+        (o) =>
+          (!companyFilter || o.company_id === companyFilter) &&
+          (!brandFilter || o.brand_id === brandFilter)
+      ),
+    [allOutlets, companyFilter, brandFilter]
   )
 
+  // Ganti company -> reset brand & outlet di bawahnya supaya tak nyangkut.
+  const onCompanyFilterChange = (value) => {
+    setCompanyFilter(value)
+    setBrandFilter('')
+    setOutletFilter('')
+  }
   // Ganti brand -> reset outlet supaya tak nyangkut di outlet brand lain.
   const onBrandFilterChange = (value) => {
     setBrandFilter(value)
@@ -92,11 +133,25 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
     () =>
       employees.filter((e) => {
         const outlets = e.outlets ?? []
+        if (companyFilter && !outlets.some((o) => o.company_id === companyFilter)) return false
         if (brandFilter && !outlets.some((o) => o.brand_id === brandFilter)) return false
         if (outletFilter && !outlets.some((o) => o.id === outletFilter)) return false
+        if (statusFilter === 'active' && !e.is_active) return false
+        if (statusFilter === 'inactive' && e.is_active) return false
+        if (privilegeFilter && Number(e.device_privilege) !== Number(privilegeFilter)) return false
+        const fpCount = e.fingerprints_count ?? 0
+        if (fpFilter === 'has' && fpCount === 0) return false
+        if (fpFilter === 'none' && fpCount > 0) return false
+        if (biometricFilter === 'has' && !e.biometric_id) return false
+        if (biometricFilter === 'none' && e.biometric_id) return false
+        if (placementFilter === 'placed' && outlets.length === 0) return false
+        if (placementFilter === 'unplaced' && outlets.length > 0) return false
         return true
       }),
-    [employees, brandFilter, outletFilter]
+    [
+      employees, companyFilter, brandFilter, outletFilter, statusFilter,
+      privilegeFilter, fpFilter, biometricFilter, placementFilter,
+    ]
   )
 
   // Hanya karyawan (yang lolos filter) dan punya template di DB yang bisa disebar.
@@ -552,17 +607,26 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                 {filteredEmployees.length !== employees.length ? ` dari ${employees.length}` : ''} karyawan
               </CardDescription>
             </div>
-            <div className="flex flex-col sm:flex-row sm:items-end gap-3">
-              <div className="space-y-1.5 sm:w-48">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Company</label>
+                <Select value={companyFilter} onChange={(e) => onCompanyFilterChange(e.target.value)}>
+                  <option value="">Semua Company</option>
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-1.5">
                 <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Brand</label>
                 <Select value={brandFilter} onChange={(e) => onBrandFilterChange(e.target.value)}>
                   <option value="">Semua Brand</option>
-                  {allBrands.map((b) => (
+                  {filterBrandOptions.map((b) => (
                     <option key={b.id} value={b.id}>{b.name}</option>
                   ))}
                 </Select>
               </div>
-              <div className="space-y-1.5 sm:w-48">
+              <div className="space-y-1.5">
                 <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Outlet</label>
                 <Select value={outletFilter} onChange={(e) => setOutletFilter(e.target.value)}>
                   <option value="">Semua Outlet</option>
@@ -571,17 +635,56 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                   ))}
                 </Select>
               </div>
-              {(brandFilter || outletFilter) && (
-                <Button
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() => { setBrandFilter(''); setOutletFilter('') }}
-                >
-                  <X className="h-4 w-4" />
-                  Reset
-                </Button>
-              )}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Status</label>
+                <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                  <option value="">Semua Status</option>
+                  <option value="active">Aktif</option>
+                  <option value="inactive">Nonaktif</option>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Hak Akses Mesin</label>
+                <Select value={privilegeFilter} onChange={(e) => setPrivilegeFilter(e.target.value)}>
+                  <option value="">Semua Hak Akses</option>
+                  {PRIVILEGE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Sidik Jari (DB)</label>
+                <Select value={fpFilter} onChange={(e) => setFpFilter(e.target.value)}>
+                  <option value="">Semua</option>
+                  <option value="has">Sudah ada</option>
+                  <option value="none">Belum ada</option>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Biometric ID</label>
+                <Select value={biometricFilter} onChange={(e) => setBiometricFilter(e.target.value)}>
+                  <option value="">Semua</option>
+                  <option value="has">Sudah diisi</option>
+                  <option value="none">Belum diisi</option>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Penempatan</label>
+                <Select value={placementFilter} onChange={(e) => setPlacementFilter(e.target.value)}>
+                  <option value="">Semua</option>
+                  <option value="placed">Punya outlet</option>
+                  <option value="unplaced">Tanpa outlet</option>
+                </Select>
+              </div>
             </div>
+            {hasActiveFilters && (
+              <div>
+                <Button variant="outline" className="gap-2" onClick={resetFilters}>
+                  <X className="h-4 w-4" />
+                  Reset Filter
+                </Button>
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent>
