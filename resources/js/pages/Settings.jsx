@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { Head, usePage } from '@inertiajs/react'
 import Layout from '../layouts/Layout'
 import { Button } from '@/components/ui/button'
-import { Settings as SettingsIcon, SlidersHorizontal, Users } from 'lucide-react'
+import { SlidersHorizontal, Users } from 'lucide-react'
 import AppSettingsPanel from '@/components/AppSettingsPanel'
 import UsersPanel from '@/components/UsersPanel'
 
@@ -33,15 +33,9 @@ export default function Settings({ groups = {}, users = [], roles = [] }) {
       <Head title="Pengaturan" />
 
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50 flex items-center gap-2">
-            <SettingsIcon className="h-6 w-6 text-indigo-500" />
-            Pengaturan
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Konfigurasi aplikasi serta manajemen user & role.
-          </p>
-        </div>
+        <p className="text-sm text-slate-500">
+          Konfigurasi aplikasi serta manajemen user &amp; role.
+        </p>
 
         {/* Tab switcher */}
         <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800">

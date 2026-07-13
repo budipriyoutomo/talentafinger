@@ -26,8 +26,6 @@ export default function EmployeeManagement({ employees = [], machines = [], comp
       <Head title="Employees" />
 
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Employees</h1>
-
         {/* Tab switcher */}
         <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800">
           {tabs.map(({ key, label, icon: Icon }) => (

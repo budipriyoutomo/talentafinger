@@ -339,9 +339,8 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
       <Head title="Attendance Logs" />
 
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Attendance Logs</h1>
-          <div className="flex gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               onClick={() => setAutoRefresh((v) => !v)}
               variant={autoRefresh ? 'default' : 'outline'}

@@ -3,6 +3,7 @@ import { Head, useForm } from '@inertiajs/react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import ThemeToggle from '@/components/ThemeToggle'
 import { LogIn, Loader2, Lock } from 'lucide-react'
 
 export default function Login() {
@@ -18,8 +19,9 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 px-4">
+    <div className="relative min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 px-4">
       <Head title="Login" />
+      <ThemeToggle className="absolute right-4 top-4 text-muted-foreground" />
       <Card className="w-full max-w-sm">
         <CardHeader className="space-y-1">
           <div className="flex items-center gap-2">

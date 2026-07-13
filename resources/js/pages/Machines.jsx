@@ -259,8 +259,7 @@ export default function Machines({ machines = [] }) {
       <Head title="Machines" />
 
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Machines</h1>
+        <div className="flex justify-end">
           <Button onClick={showForm ? closeForm : openCreate} className="gap-2">
             <Plus className="h-4 w-4" />
             {showForm ? 'Cancel' : 'Add Machine'}

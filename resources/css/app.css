@@ -5,10 +5,12 @@
 
 /*
  * Sistem design-token shadcn/ui (base color: slate) untuk Tailwind v4.
- * Dark mode mengikuti preferensi OS (prefers-color-scheme) — sama seperti
- * perilaku aplikasi sebelumnya — sekaligus mendukung override manual via
- * class `.dark` bila kelak ditambah toggle tema.
+ * Tema dikendalikan class `.dark` pada <html> (bukan prefers-color-scheme):
+ * script di app.blade.php yang memasangnya saat boot berdasarkan pilihan user
+ * di localStorage, atau preferensi OS bila pilihannya "system".
  */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
@@ -39,9 +41,17 @@
     --color-border: var(--border);
     --color-input: var(--input);
     --color-ring: var(--ring);
+
+    --color-sidebar: var(--sidebar);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-ring: var(--sidebar-ring);
 }
 
 :root {
+    color-scheme: light;
     --radius: 0.5rem;
     --background: oklch(1 0 0);
     --foreground: oklch(0.129 0.042 264.695);
@@ -62,34 +72,17 @@
     --border: oklch(0.929 0.013 255.508);
     --input: oklch(0.929 0.013 255.508);
     --ring: oklch(0.704 0.04 256.788);
-}
 
-/* Nilai dark dipakai untuk dua mekanisme: auto (OS) + manual (.dark). */
-@media (prefers-color-scheme: dark) {
-    :root {
-        --background: oklch(0.129 0.042 264.695);
-        --foreground: oklch(0.984 0.003 247.858);
-        --card: oklch(0.208 0.042 265.755);
-        --card-foreground: oklch(0.984 0.003 247.858);
-        --popover: oklch(0.208 0.042 265.755);
-        --popover-foreground: oklch(0.984 0.003 247.858);
-        --primary: oklch(0.929 0.013 255.508);
-        --primary-foreground: oklch(0.208 0.042 265.755);
-        --secondary: oklch(0.279 0.041 260.031);
-        --secondary-foreground: oklch(0.984 0.003 247.858);
-        --muted: oklch(0.279 0.041 260.031);
-        --muted-foreground: oklch(0.704 0.04 256.788);
-        --accent: oklch(0.279 0.041 260.031);
-        --accent-foreground: oklch(0.984 0.003 247.858);
-        --destructive: oklch(0.704 0.191 22.216);
-        --destructive-foreground: oklch(0.984 0.003 247.858);
-        --border: oklch(1 0 0 / 10%);
-        --input: oklch(1 0 0 / 15%);
-        --ring: oklch(0.551 0.027 264.364);
-    }
+    --sidebar: oklch(0.984 0.003 247.858);
+    --sidebar-foreground: oklch(0.129 0.042 264.695);
+    --sidebar-accent: oklch(0.968 0.007 247.896);
+    --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
+    --sidebar-border: oklch(0.929 0.013 255.508);
+    --sidebar-ring: oklch(0.704 0.04 256.788);
 }
 
 .dark {
+    color-scheme: dark;
     --background: oklch(0.129 0.042 264.695);
     --foreground: oklch(0.984 0.003 247.858);
     --card: oklch(0.208 0.042 265.755);
@@ -109,6 +102,13 @@
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.551 0.027 264.364);
+
+    --sidebar: oklch(0.208 0.042 265.755);
+    --sidebar-foreground: oklch(0.984 0.003 247.858);
+    --sidebar-accent: oklch(0.279 0.041 260.031);
+    --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.551 0.027 264.364);
 }
 
 @layer base {

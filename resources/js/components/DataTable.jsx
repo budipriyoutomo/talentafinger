@@ -101,7 +101,7 @@ export function DataTable({ columns, data, filterPlaceholder = 'Filter...' }) {
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between space-x-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex-1 text-sm text-slate-500 dark:text-slate-400">
           {table.getFilteredSelectedRowModel().rows.length} of{' '}
           {table.getFilteredRowModel().rows.length} row(s) selected.

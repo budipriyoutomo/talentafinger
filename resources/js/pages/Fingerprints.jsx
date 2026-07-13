@@ -483,8 +483,6 @@ export default function Fingerprints({ machines = [], employeesByPin = {} }) {
       <Head title="Sidik Jari" />
 
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Sidik Jari</h1>
-
         <Card>
           <CardContent className="pt-6 text-sm text-slate-600 dark:text-slate-300">
             Sinkronisasi sidik jari antar mesin lewat koneksi langsung (TCP 4370). Pilih mesin sumber,

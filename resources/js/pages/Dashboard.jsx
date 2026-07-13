@@ -45,8 +45,7 @@ export default function Dashboard({ machines = [], stats = {} }) {
       <Head title="Dashboard" />
 
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Dashboard</h1>
+        <div className="flex justify-end">
           <div className="text-sm text-slate-500 dark:text-slate-400">
             Last updated: {new Date().toLocaleTimeString()}
           </div>
