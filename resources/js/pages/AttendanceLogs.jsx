@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Download, Send, Loader2, X, ChevronLeft, ChevronRight, RefreshCw, ListChecks, AlertTriangle, SlidersHorizontal } from 'lucide-react'
 
 // Pilihan jeda auto-refresh (detik).
@@ -34,6 +35,8 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
   const [sendingAll, setSendingAll] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [resendingFailed, setResendingFailed] = useState(false)
+  // Baris tab "Gagal" yang dicentang, key = id log (lihat getRowId di DataTable).
+  const [rowSelection, setRowSelection] = useState({})
   // Panel filter disembunyikan default; otomatis terbuka bila ada filter aktif dari URL.
   const [showFilters, setShowFilters] = useState(
     () => !!(filters.machine_id || filters.brand_id || filters.outlet_id || filters.date_from || filters.date_to)
@@ -52,6 +55,21 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
     }, REFRESH_INTERVAL * 1000)
     return () => clearInterval(id)
   }, [autoRefresh])
+
+  // Buang centang yang barisnya sudah tak ada di halaman ini (terkirim, ganti
+  // halaman, atau filter berubah) supaya jumlah terpilih selalu jujur.
+  useEffect(() => {
+    const visible = new Set(logs.filter((l) => l.status_sync === 'failed').map((l) => l.id))
+    setRowSelection((prev) => {
+      const next = Object.fromEntries(Object.entries(prev).filter(([id, on]) => on && visible.has(id)))
+      return Object.keys(next).length === Object.keys(prev).length ? prev : next
+    })
+  }, [logs])
+
+  const selectedIds = useMemo(
+    () => Object.keys(rowSelection).filter((id) => rowSelection[id]),
+    [rowSelection]
+  )
 
   // Outlet yang ditampilkan mengikuti brand terpilih (kalau ada).
   const outletOptions = useMemo(
@@ -179,16 +197,22 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
     }
   }
 
-  const resendAllFailed = () => {
+  // Tanpa centang = kirim ulang SEMUA log gagal; ada centang = hanya yang dipilih.
+  const resendFailed = () => {
+    const partial = selectedIds.length > 0
     confirmToast({
-      message: 'Kirim ulang semua data gagal ke Mekari Talenta?',
-      description: 'Semua log berstatus failed akan dicoba dikirim ulang.',
+      message: partial
+        ? `Kirim ulang ${selectedIds.length} data gagal terpilih ke Mekari Talenta?`
+        : 'Kirim ulang semua data gagal ke Mekari Talenta?',
+      description: partial
+        ? 'Hanya baris yang dicentang yang akan dicoba dikirim ulang.'
+        : 'Semua log berstatus failed akan dicoba dikirim ulang.',
       confirmLabel: 'Kirim Ulang',
-      onConfirm: runResendAllFailed,
+      onConfirm: runResendFailed,
     })
   }
 
-  const runResendAllFailed = async () => {
+  const runResendFailed = async () => {
     setResendingFailed(true)
     try {
       const res = await fetch('/api/attendance-logs/send-failed', {
@@ -198,10 +222,12 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
           'Accept': 'application/json',
           'X-CSRF-TOKEN': csrf(),
         },
+        body: JSON.stringify(selectedIds.length > 0 ? { ids: selectedIds } : {}),
       })
       const data = await res.json()
       if (res.ok) toast.success(data.message)
       else toast.error(data.message || 'Gagal mengirim ulang')
+      setRowSelection({})
       router.reload({ only: ['logs', 'pagination'] })
     } catch (err) {
       toast.error('Gagal mengirim ulang: ' + err.message)
@@ -210,8 +236,30 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
     }
   }
 
+  // Kolom centang hanya muncul di tab "Gagal" (di situ semua baris bisa dikirim ulang).
+  const selectColumn = {
+    id: 'select',
+    enableSorting: false,
+    header: ({ table }) => (
+      <Checkbox
+        aria-label="Pilih semua baris di halaman ini"
+        checked={table.getIsAllPageRowsSelected()}
+        indeterminate={table.getIsSomePageRowsSelected() && !table.getIsAllPageRowsSelected()}
+        onChange={(e) => table.toggleAllPageRowsSelected(e.target.checked)}
+      />
+    ),
+    cell: ({ row }) => (
+      <Checkbox
+        aria-label="Pilih baris ini"
+        checked={row.getIsSelected()}
+        onChange={(e) => row.toggleSelected(e.target.checked)}
+      />
+    ),
+  }
+
   const columns = useMemo(
     () => [
+      ...(activeTab === 'failed' ? [selectColumn] : []),
       {
         accessorKey: 'timestamp',
         header: 'Timestamp',
@@ -298,7 +346,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         },
       },
     ],
-    [machines, sendingId]
+    [machines, sendingId, activeTab]
   )
 
   const handleExport = () => {
@@ -393,14 +441,14 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
                   <CardTitle>{activeTab === 'failed' ? 'Data Gagal Kirim' : 'Log Viewer'}</CardTitle>
                   <CardDescription>
                     {activeTab === 'failed'
-                      ? 'Semua absensi berstatus failed • klik "Kirim" untuk coba ulang'
+                      ? 'Semua absensi berstatus failed • centang baris untuk pilih yang dikirim ulang, atau kosongkan centang untuk kirim ulang semua'
                       : 'Click column headers to sort • Use search to filter'}
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   {activeTab === 'failed' && (
                     <Button
-                      onClick={resendAllFailed}
+                      onClick={resendFailed}
                       disabled={resendingFailed || (pagination.total ?? 0) === 0}
                       className="gap-2"
                     >
@@ -409,7 +457,9 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
                       ) : (
                         <RefreshCw className="h-4 w-4" />
                       )}
-                      Kirim Ulang Semua Gagal
+                      {selectedIds.length > 0
+                        ? `Kirim Ulang Terpilih (${selectedIds.length})`
+                        : 'Kirim Ulang Semua Gagal'}
                     </Button>
                   )}
                   <Button
@@ -512,7 +562,15 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
             </div>
           </CardHeader>
           <CardContent>
-            <DataTable columns={columns} data={logs} filterPlaceholder="Filter by employee or biometric ID..." />
+            <DataTable
+              columns={columns}
+              data={logs}
+              filterPlaceholder="Filter by employee or biometric ID..."
+              enableRowSelection={activeTab === 'failed'}
+              rowSelection={rowSelection}
+              onRowSelectionChange={setRowSelection}
+              getRowId={(log) => log.id}
+            />
 
             {/* Paginasi server-side. Kotak pencarian di atas hanya menyaring halaman ini. */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4">

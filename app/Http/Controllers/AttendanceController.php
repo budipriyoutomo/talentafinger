@@ -47,10 +47,16 @@ class AttendanceController extends Controller
     }
 
     /**
-     * Kirim ulang semua log berstatus 'failed' secara batch — MANUAL.
+     * Kirim ulang log berstatus 'failed' secara batch — MANUAL.
+     * Tanpa 'ids' = semua log gagal; dengan 'ids' = hanya baris yang dicentang user.
      */
-    public function sendFailed()
+    public function sendFailed(Request $request)
     {
-        return response()->json($this->sync->sendFailed());
+        $data = $request->validate([
+            'ids' => ['sometimes', 'array'],
+            'ids.*' => ['uuid'],
+        ]);
+
+        return response()->json($this->sync->sendFailed($data['ids'] ?? []));
     }
 }

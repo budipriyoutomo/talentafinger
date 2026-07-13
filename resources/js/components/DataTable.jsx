@@ -19,7 +19,16 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
-export function DataTable({ columns, data, filterPlaceholder = 'Filter...' }) {
+export function DataTable({
+  columns,
+  data,
+  filterPlaceholder = 'Filter...',
+  // Seleksi baris opsional (dikontrol pemanggil). rowSelection = { [rowId]: true }.
+  enableRowSelection = false,
+  rowSelection,
+  onRowSelectionChange,
+  getRowId,
+}) {
   const [sorting, setSorting] = useState([])
   const [columnFilters, setColumnFilters] = useState([])
   const [globalFilter, setGlobalFilter] = useState('')
@@ -31,14 +40,18 @@ export function DataTable({ columns, data, filterPlaceholder = 'Filter...' }) {
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    enableRowSelection,
+    getRowId,
     state: {
       sorting,
       columnFilters,
       globalFilter,
+      ...(enableRowSelection ? { rowSelection: rowSelection ?? {} } : {}),
     },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: setGlobalFilter,
+    onRowSelectionChange,
   })
 
   return (

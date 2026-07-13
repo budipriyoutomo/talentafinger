@@ -36,10 +36,16 @@ class AttendanceSyncService
 
     /**
      * Kirim ulang HANYA log yang berstatus 'failed' — MANUAL (tombol di tab Gagal).
+     * Bila $ids diisi, hanya log gagal dengan id tersebut yang dikirim ulang
+     * (dipakai saat user mencentang baris tertentu); kosong = semua yang gagal.
+     *
+     * @param  array<int, string>  $ids
      */
-    public function sendFailed(): array
+    public function sendFailed(array $ids = []): array
     {
-        $logs = AttendanceLog::where('status_sync', 'failed')->get();
+        $logs = AttendanceLog::where('status_sync', 'failed')
+            ->when($ids, fn ($query) => $query->whereIn('id', $ids))
+            ->get();
 
         if ($logs->isEmpty()) {
             return ['success' => true, 'message' => 'Tidak ada data gagal untuk dikirim ulang', 'sent' => 0, 'failed' => 0];
