@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
-import { Download, Send, Loader2, X, ChevronLeft, ChevronRight, RefreshCw, ListChecks, AlertTriangle } from 'lucide-react'
+import { Download, Send, Loader2, X, ChevronLeft, ChevronRight, RefreshCw, ListChecks, AlertTriangle, SlidersHorizontal } from 'lucide-react'
 
 // Pilihan jeda auto-refresh (detik).
 const REFRESH_INTERVAL = 15
@@ -33,11 +33,16 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
   const [sendingId, setSendingId] = useState(null)
   const [sendingAll, setSendingAll] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(false)
+  const [resendingFailed, setResendingFailed] = useState(false)
+  // Panel filter disembunyikan default; otomatis terbuka bila ada filter aktif dari URL.
+  const [showFilters, setShowFilters] = useState(
+    () => !!(filters.machine_id || filters.brand_id || filters.outlet_id || filters.date_from || filters.date_to)
+  )
 
   // Refresh tabel berkala tanpa kehilangan filter/scroll. Hanya muat ulang
   // 'logs' & 'pagination' (filter dipertahankan dari URL aktif).
   const sendingRef = useRef(false)
-  sendingRef.current = sendingId !== null || sendingAll
+  sendingRef.current = sendingId !== null || sendingAll || resendingFailed
   useEffect(() => {
     if (!autoRefresh) return
     const id = setInterval(() => {
@@ -171,6 +176,37 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
       toast.error('Gagal mengirim: ' + err.message)
     } finally {
       setSendingAll(false)
+    }
+  }
+
+  const resendAllFailed = () => {
+    confirmToast({
+      message: 'Kirim ulang semua data gagal ke Mekari Talenta?',
+      description: 'Semua log berstatus failed akan dicoba dikirim ulang.',
+      confirmLabel: 'Kirim Ulang',
+      onConfirm: runResendAllFailed,
+    })
+  }
+
+  const runResendAllFailed = async () => {
+    setResendingFailed(true)
+    try {
+      const res = await fetch('/api/attendance-logs/send-failed', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': csrf(),
+        },
+      })
+      const data = await res.json()
+      if (res.ok) toast.success(data.message)
+      else toast.error(data.message || 'Gagal mengirim ulang')
+      router.reload({ only: ['logs', 'pagination'] })
+    } catch (err) {
+      toast.error('Gagal mengirim ulang: ' + err.message)
+    } finally {
+      setResendingFailed(false)
     }
   }
 
@@ -353,14 +389,44 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         <Card>
           <CardHeader>
             <div className="space-y-4">
-              <div>
-                <CardTitle>{activeTab === 'failed' ? 'Data Gagal Kirim' : 'Log Viewer'}</CardTitle>
-                <CardDescription>
-                  {activeTab === 'failed'
-                    ? 'Semua absensi berstatus failed • klik "Kirim" untuk coba ulang'
-                    : 'Click column headers to sort • Use search to filter'}
-                </CardDescription>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle>{activeTab === 'failed' ? 'Data Gagal Kirim' : 'Log Viewer'}</CardTitle>
+                  <CardDescription>
+                    {activeTab === 'failed'
+                      ? 'Semua absensi berstatus failed • klik "Kirim" untuk coba ulang'
+                      : 'Click column headers to sort • Use search to filter'}
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {activeTab === 'failed' && (
+                    <Button
+                      onClick={resendAllFailed}
+                      disabled={resendingFailed || (pagination.total ?? 0) === 0}
+                      className="gap-2"
+                    >
+                      {resendingFailed ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4" />
+                      )}
+                      Kirim Ulang Semua Gagal
+                    </Button>
+                  )}
+                  <Button
+                    variant={showFilters ? 'default' : 'outline'}
+                    className="gap-2"
+                    onClick={() => setShowFilters((v) => !v)}
+                  >
+                    <SlidersHorizontal className="h-4 w-4" />
+                    Filter
+                    {hasFilters && (
+                      <span className="ml-0.5 inline-flex h-2 w-2 rounded-full bg-indigo-400" title="Filter aktif" />
+                    )}
+                  </Button>
+                </div>
               </div>
+              {showFilters && (
               <div className="flex flex-col sm:flex-row sm:items-end gap-3">
                 <div className="space-y-1.5 sm:w-56">
                   <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
@@ -443,6 +509,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
                   </Button>
                 )}
               </div>
+              )}
             </div>
           </CardHeader>
           <CardContent>

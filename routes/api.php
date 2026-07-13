@@ -664,6 +664,7 @@ Route::get('/attendance-logs', function (Illuminate\Http\Request $request) {
 
 // Kirim manual ke Mekari Talenta (via tombol di aplikasi)
 Route::post('/attendance-logs/send-pending', [AttendanceController::class, 'sendPending']);
+Route::post('/attendance-logs/send-failed', [AttendanceController::class, 'sendFailed']);
 Route::post('/attendance-logs/{id}/send', [AttendanceController::class, 'send']);
 
 // ===== Pengaturan aplikasi =====

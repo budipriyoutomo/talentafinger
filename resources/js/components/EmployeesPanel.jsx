@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { router } from '@inertiajs/react'
 import { toast } from 'sonner'
 import { confirmToast } from '@/lib/confirm'
@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { Trash2, Plus, Pencil, Fingerprint, Send, X } from 'lucide-react'
+import { Trash2, Plus, Pencil, Fingerprint, Send, X, SlidersHorizontal } from 'lucide-react'
 import EmployeeFingerprintDialog from '@/components/EmployeeFingerprintDialog'
 import BulkDistributeDialog from '@/components/BulkDistributeDialog'
 
@@ -56,6 +56,8 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
   const [fpFilter, setFpFilter] = useState('')               // '' | 'has' | 'none'
   const [biometricFilter, setBiometricFilter] = useState('') // '' | 'has' | 'none'
   const [placementFilter, setPlacementFilter] = useState('') // '' | 'placed' | 'unplaced'
+  // Panel filter disembunyikan default, ditampilkan lewat toggle.
+  const [showFilters, setShowFilters] = useState(false)
 
   const hasActiveFilters =
     companyFilter || brandFilter || outletFilter || statusFilter ||
@@ -211,6 +213,18 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
     setEditingId(null)
     setShowForm(false)
   }
+
+  // Modal form: tutup dengan Escape & kunci scroll body selama terbuka.
+  useEffect(() => {
+    if (!showForm) return
+    const onKey = (e) => { if (e.key === 'Escape') closeForm() }
+    document.addEventListener('keydown', onKey)
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = ''
+    }
+  }, [showForm])
 
   // Ganti company -> reset brand di bawahnya supaya tidak nyangkut.
   const onCompanyChange = (company_id) =>
@@ -422,23 +436,31 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
             </>
           )}
         </div>
-        <Button onClick={showForm ? closeForm : openCreate} className="gap-2">
+        <Button onClick={openCreate} className="gap-2">
           <Plus className="h-4 w-4" />
-          {showForm ? 'Cancel' : 'Add Employee'}
+          Add Employee
         </Button>
       </div>
 
       {showForm && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{editingId ? 'Edit Karyawan' : 'Tambah Karyawan'}</CardTitle>
-            <CardDescription>
-              Master karyawan. Penempatan dipilih bertingkat: Company → Brand → Outlet.
-              Biometric ID (PIN) dipakai sebagai identitas di semua mesin.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) closeForm() }}
+        >
+          <div className="my-10 w-full max-w-3xl rounded-lg bg-white dark:bg-slate-900 shadow-xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 dark:border-slate-800 p-5">
+              <div className="space-y-1">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">
+                  {editingId ? 'Edit Karyawan' : 'Tambah Karyawan'}
+                </h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Master karyawan. Penempatan dipilih bertingkat: Company → Brand → Outlet.
+                  Biometric ID (PIN) dipakai sebagai identitas di semua mesin.
+                </p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={closeForm}><X className="h-4 w-4" /></Button>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-4 p-5">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Nama</label>
@@ -588,25 +610,40 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                 />
                 Aktif
               </label>
-              <div className="flex gap-2">
+              <div className="flex gap-2 border-t border-slate-200 dark:border-slate-800 pt-4">
                 <Button type="submit">{editingId ? 'Update' : 'Save'}</Button>
                 <Button type="button" variant="outline" onClick={closeForm}>Cancel</Button>
               </div>
             </form>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       <Card>
         <CardHeader>
           <div className="space-y-4">
-            <div>
-              <CardTitle>Daftar Karyawan</CardTitle>
-              <CardDescription>
-                {filteredEmployees.length}
-                {filteredEmployees.length !== employees.length ? ` dari ${employees.length}` : ''} karyawan
-              </CardDescription>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle>Daftar Karyawan</CardTitle>
+                <CardDescription>
+                  {filteredEmployees.length}
+                  {filteredEmployees.length !== employees.length ? ` dari ${employees.length}` : ''} karyawan
+                </CardDescription>
+              </div>
+              <Button
+                variant={showFilters ? 'default' : 'outline'}
+                className="gap-2 shrink-0"
+                onClick={() => setShowFilters((v) => !v)}
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                Filter
+                {hasActiveFilters && (
+                  <span className="ml-0.5 inline-flex h-2 w-2 rounded-full bg-indigo-400" title="Filter aktif" />
+                )}
+              </Button>
             </div>
+            {showFilters && (
+            <>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Company</label>
@@ -684,6 +721,8 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                   Reset Filter
                 </Button>
               </div>
+            )}
+            </>
             )}
           </div>
         </CardHeader>

@@ -45,4 +45,12 @@ class AttendanceController extends Controller
 
         return response()->json($result);
     }
+
+    /**
+     * Kirim ulang semua log berstatus 'failed' secara batch — MANUAL.
+     */
+    public function sendFailed()
+    {
+        return response()->json($this->sync->sendFailed());
+    }
 }

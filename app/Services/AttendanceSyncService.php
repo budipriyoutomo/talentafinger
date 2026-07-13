@@ -35,6 +35,20 @@ class AttendanceSyncService
     }
 
     /**
+     * Kirim ulang HANYA log yang berstatus 'failed' — MANUAL (tombol di tab Gagal).
+     */
+    public function sendFailed(): array
+    {
+        $logs = AttendanceLog::where('status_sync', 'failed')->get();
+
+        if ($logs->isEmpty()) {
+            return ['success' => true, 'message' => 'Tidak ada data gagal untuk dikirim ulang', 'sent' => 0, 'failed' => 0];
+        }
+
+        return $this->sendLogs($logs);
+    }
+
+    /**
      * Susun log jadi satu CSV badgeno;date;checktime lalu upload ke Talenta.
      *
      * badgeno di-RESOLVE dari karyawan: employees.biometric_id (PIN global) ==
