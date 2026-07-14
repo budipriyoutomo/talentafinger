@@ -98,8 +98,10 @@ class DashboardController extends Controller
                 ->pluck('biometric_id');
         }
 
+        // Ukuran halaman dari pemilih "Rows per page" di UI; whitelist supaya tak
+        // ada nilai ekstrem yang bikin query berat.
         $perPage = (int) $request->query('per_page', 100);
-        $perPage = max(25, min($perPage, 500)); // jaga-jaga dari nilai ekstrem
+        $perPage = in_array($perPage, [10, 50, 100, 250, 500], true) ? $perPage : 100;
 
         $paginator = AttendanceLog::with('machine')
             ->when($machineId, fn($q) => $q->where('machine_id', $machineId))

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   flexRender,
   getCoreRowModel,
@@ -28,10 +28,24 @@ export function DataTable({
   rowSelection,
   onRowSelectionChange,
   getRowId,
+  // Pilihan "Rows per page". Bila onPageSizeChange diisi, pemilihan diserahkan ke
+  // pemanggil (mis. paginasi server-side) — kalau tidak, tabel yang mengatur sendiri.
+  pageSizeOptions = [10, 20, 30, 40, 50],
+  pageSize,
+  onPageSizeChange,
 }) {
   const [sorting, setSorting] = useState([])
   const [columnFilters, setColumnFilters] = useState([])
   const [globalFilter, setGlobalFilter] = useState('')
+  const [pagination, setPagination] = useState({
+    pageIndex: 0,
+    pageSize: pageSize ?? pageSizeOptions[0],
+  })
+
+  // Ikuti ukuran halaman dari luar (kalau dikontrol pemanggil).
+  useEffect(() => {
+    if (pageSize) setPagination((prev) => ({ ...prev, pageIndex: 0, pageSize }))
+  }, [pageSize])
 
   const table = useReactTable({
     data,
@@ -46,11 +60,13 @@ export function DataTable({
       sorting,
       columnFilters,
       globalFilter,
+      pagination,
       ...(enableRowSelection ? { rowSelection: rowSelection ?? {} } : {}),
     },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: setGlobalFilter,
+    onPaginationChange: setPagination,
     onRowSelectionChange,
   })
 
@@ -168,13 +184,15 @@ export function DataTable({
           <select
             value={table.getState().pagination.pageSize}
             onChange={(e) => {
-              table.setPageSize(Number(e.target.value))
+              const size = Number(e.target.value)
+              if (onPageSizeChange) onPageSizeChange(size)
+              else table.setPageSize(size)
             }}
             className="rounded border border-slate-200 px-2 py-1 dark:border-slate-800 dark:bg-slate-950"
           >
-            {[10, 20, 30, 40, 50].map((pageSize) => (
-              <option key={pageSize} value={pageSize}>
-                {pageSize}
+            {pageSizeOptions.map((size) => (
+              <option key={size} value={size}>
+                {size}
               </option>
             ))}
           </select>

@@ -15,6 +15,10 @@ import { Download, Send, Loader2, X, ChevronLeft, ChevronRight, RefreshCw, ListC
 // Pilihan jeda auto-refresh (detik).
 const REFRESH_INTERVAL = 15
 
+// Pilihan jumlah baris per halaman. Harus cocok dengan whitelist per_page di
+// DashboardController::attendanceLogs (paginasi dikerjakan server).
+const PER_PAGE_OPTIONS = [10, 50, 100, 250, 500]
+
 // Tab = preset status_sync yang dikirim ke server ('' = semua).
 const TABS = [
   { key: '', label: 'Semua Log', icon: ListChecks },
@@ -71,6 +75,8 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
     [rowSelection]
   )
 
+  const perPage = pagination.per_page ?? 100
+
   // Outlet yang ditampilkan mengikuti brand terpilih (kalau ada).
   const outletOptions = useMemo(
     () => (filters.brand_id ? outlets.filter((o) => o.brand_id === filters.brand_id) : outlets),
@@ -86,6 +92,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
       outlet_id: filters.outlet_id || '',
       date_from: filters.date_from || '',
       date_to: filters.date_to || '',
+      per_page: perPage,
       ...next,
     }
     // Ganti brand -> reset outlet supaya tak nyangkut di outlet brand lain.
@@ -113,6 +120,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         outlet_id: filters.outlet_id || '',
         date_from: filters.date_from || '',
         date_to: filters.date_to || '',
+        per_page: perPage,
         page,
       }).filter(([, v]) => v)
     )
@@ -123,6 +131,13 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
     })
   }
 
+  // Ganti jumlah baris per halaman = ambil ulang data dari server (paginasi
+  // server-side), bukan sekadar memotong halaman yang sudah terunduh.
+  const changePerPage = (size) => {
+    if (size === perPage) return
+    applyFilters({ per_page: size })
+  }
+
   // Ganti tab (status). Reset ke halaman 1; filter lain dipertahankan.
   const activeTab = filters.status || ''
   const switchTab = (status) => {
@@ -130,9 +145,9 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
     applyFilters({ status })
   }
 
-  // Reset semua filter tapi tetap di tab (status) yang aktif.
+  // Reset semua filter tapi tetap di tab (status) & ukuran halaman yang aktif.
   const resetFilters = () => {
-    const params = filters.status ? { status: filters.status } : {}
+    const params = { per_page: perPage, ...(filters.status ? { status: filters.status } : {}) }
     router.get('/attendance-logs', params, {
       preserveScroll: true,
       only: ['logs', 'filters', 'pagination'],
@@ -570,6 +585,9 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
               rowSelection={rowSelection}
               onRowSelectionChange={setRowSelection}
               getRowId={(log) => log.id}
+              pageSizeOptions={PER_PAGE_OPTIONS}
+              pageSize={perPage}
+              onPageSizeChange={changePerPage}
             />
 
             {/* Paginasi server-side. Kotak pencarian di atas hanya menyaring halaman ini. */}
