@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { Head, router } from '@inertiajs/react'
 import { toast } from 'sonner'
 import { confirmToast } from '@/lib/confirm'
@@ -6,10 +6,24 @@ import Layout from '../layouts/Layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { Cpu, Trash2, Plus, Pencil, Power, FileClock, Users, Clock, Loader2, Gauge, Fingerprint, ShieldCheck, Database, RefreshCw, Plug } from 'lucide-react'
+import { usePermissions } from '@/lib/permissions'
+import { Cpu, Trash2, Plus, Pencil, Power, FileClock, Users, Clock, Loader2, Gauge, Fingerprint, ShieldCheck, Database, RefreshCw, Plug, Store } from 'lucide-react'
 
-const emptyForm = { serial_number: '', name: '', location: '', ip_address: '', sdk_port: 4370, is_active: true }
+// company_id & brand_id hanya untuk dropdown cascading; yang disimpan ke mesin
+// cuma outlet_id (brand & company tersirat dari outlet).
+const emptyForm = {
+  serial_number: '',
+  name: '',
+  company_id: '',
+  brand_id: '',
+  outlet_id: '',
+  location: '',
+  ip_address: '',
+  sdk_port: 4370,
+  is_active: true,
+}
 
 function csrf() {
   return document.querySelector('meta[name="csrf-token"]').content
@@ -43,7 +57,12 @@ function CapacityRow({ icon: Icon, label, used, max }) {
   )
 }
 
-export default function Machines({ machines = [] }) {
+export default function Machines({ machines = [], companies = [] }) {
+  // Tombol yang mengubah perangkat/DB hanya untuk yang punya machine.manage.
+  // Server tetap menolak lewat MachinePolicy kalau ada yang memaksa lewat API.
+  const { can } = usePermissions()
+  const canManage = can('machine.manage')
+
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [formData, setFormData] = useState(emptyForm)
@@ -164,6 +183,29 @@ export default function Machines({ machines = [] }) {
     return () => clearInterval(interval)
   }, [])
 
+  // Brand & outlet yang tampil di form mengikuti pilihan di atasnya.
+  const brandOptions = useMemo(
+    () => companies.find((c) => c.id === formData.company_id)?.brands ?? [],
+    [companies, formData.company_id]
+  )
+  const outletOptions = useMemo(
+    () => brandOptions.find((b) => b.id === formData.brand_id)?.outlets ?? [],
+    [brandOptions, formData.brand_id]
+  )
+
+  // Saat edit, outlet_id mesin harus "dibalik" jadi company & brand-nya supaya
+  // dropdown di atasnya ikut terpilih.
+  const orgPathOf = (outletId) => {
+    for (const c of companies) {
+      for (const b of c.brands ?? []) {
+        if ((b.outlets ?? []).some((o) => o.id === outletId)) {
+          return { company_id: c.id, brand_id: b.id }
+        }
+      }
+    }
+    return { company_id: '', brand_id: '' }
+  }
+
   const openCreate = () => {
     setEditingId(null)
     setFormData(emptyForm)
@@ -175,6 +217,8 @@ export default function Machines({ machines = [] }) {
     setFormData({
       serial_number: machine.serial_number,
       name: machine.name ?? '',
+      ...orgPathOf(machine.outlet_id),
+      outlet_id: machine.outlet_id ?? '',
       location: machine.location ?? '',
       ip_address: machine.ip_address ?? '',
       sdk_port: machine.sdk_port ?? 4370,
@@ -259,15 +303,17 @@ export default function Machines({ machines = [] }) {
       <Head title="Machines" />
 
       <div className="space-y-6">
-        <div className="flex justify-end">
-          <Button onClick={showForm ? closeForm : openCreate} className="gap-2">
-            <Plus className="h-4 w-4" />
-            {showForm ? 'Cancel' : 'Add Machine'}
-          </Button>
-        </div>
+        {canManage && (
+          <div className="flex justify-end">
+            <Button onClick={showForm ? closeForm : openCreate} className="gap-2">
+              <Plus className="h-4 w-4" />
+              {showForm ? 'Cancel' : 'Add Machine'}
+            </Button>
+          </div>
+        )}
 
         {/* Add / Edit Machine Form */}
-        {showForm && (
+        {showForm && canManage && (
           <Card>
             <CardHeader>
               <CardTitle>{editingId ? 'Edit Machine' : 'Register New Machine'}</CardTitle>
@@ -314,6 +360,59 @@ export default function Machines({ machines = [] }) {
                       onChange={(e) => setFormData({ ...formData, location: e.target.value })}
                       placeholder="e.g., Building A, Floor 1"
                     />
+                  </div>
+                </div>
+                {/* Penempatan mesin: Company -> Brand -> Outlet. Yang disimpan
+                    hanya outlet_id; dua dropdown di atasnya cuma penyaring. */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                      Company
+                    </label>
+                    <Select
+                      value={formData.company_id}
+                      onChange={(e) =>
+                        // Ganti company -> reset brand & outlet supaya tak nyangkut.
+                        setFormData({ ...formData, company_id: e.target.value, brand_id: '', outlet_id: '' })
+                      }
+                    >
+                      <option value="">— pilih company —</option>
+                      {companies.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                      Brand
+                    </label>
+                    <Select
+                      value={formData.brand_id}
+                      disabled={!formData.company_id}
+                      onChange={(e) =>
+                        setFormData({ ...formData, brand_id: e.target.value, outlet_id: '' })
+                      }
+                    >
+                      <option value="">— pilih brand —</option>
+                      {brandOptions.map((b) => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                      Outlet <span className="text-xs text-slate-400">— menentukan hak akses per-outlet</span>
+                    </label>
+                    <Select
+                      value={formData.outlet_id}
+                      disabled={!formData.brand_id}
+                      onChange={(e) => setFormData({ ...formData, outlet_id: e.target.value })}
+                    >
+                      <option value="">— pilih outlet —</option>
+                      {outletOptions.map((o) => (
+                        <option key={o.id} value={o.id}>{o.name}</option>
+                      ))}
+                    </Select>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -414,6 +513,14 @@ export default function Machines({ machines = [] }) {
                         {!machine.is_active && <Badge variant="destructive">nonaktif</Badge>}
                       </div>
                       <p className="text-sm text-slate-600 dark:text-slate-400">Serial: {machine.serial_number}</p>
+                      <p className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
+                        <Store className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                        {machine.outlet_name
+                          ? [machine.company_name, machine.brand_name, machine.outlet_name]
+                              .filter(Boolean)
+                              .join(' › ')
+                          : <span className="text-amber-600">belum ditempatkan di outlet</span>}
+                      </p>
                       {machine.location && (
                         <p className="text-sm text-slate-500 dark:text-slate-400">Location: {machine.location}</p>
                       )}
@@ -501,25 +608,27 @@ export default function Machines({ machines = [] }) {
                               <CapacityRow icon={ShieldCheck} label="User Admin" used={d.admin_count} max={null} />
                               <CapacityRow icon={Fingerprint} label="Sidik Jari" used={d.fingers} max={d.fingers_cap} />
                               <CapacityRow icon={Database} label="Log Presensi" used={d.records} max={d.records_cap} />
-                              <div className="flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800 pt-2">
-                                <span className="text-[11px] text-slate-400">
-                                  Bebaskan kapasitas log mesin
-                                </span>
-                                <Button
-                                  onClick={() => clearAttendance(machine)}
-                                  disabled={clearingId === machine.id}
-                                  variant="destructive"
-                                  size="sm"
-                                  className="gap-1.5 h-7"
-                                >
-                                  {clearingId === machine.id ? (
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                  ) : (
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  )}
-                                  Clear Log Mesin
-                                </Button>
-                              </div>
+                              {canManage && (
+                                <div className="flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800 pt-2">
+                                  <span className="text-[11px] text-slate-400">
+                                    Bebaskan kapasitas log mesin
+                                  </span>
+                                  <Button
+                                    onClick={() => clearAttendance(machine)}
+                                    disabled={clearingId === machine.id}
+                                    variant="destructive"
+                                    size="sm"
+                                    className="gap-1.5 h-7"
+                                  >
+                                    {clearingId === machine.id ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    )}
+                                    Clear Log Mesin
+                                  </Button>
+                                </div>
+                              )}
                               {(d.device_name || d.firmware) && (
                                 <p className="text-[11px] text-slate-400 pt-1">
                                   {d.device_name}{d.device_name && d.firmware ? ' · ' : ''}
@@ -548,42 +657,46 @@ export default function Machines({ machines = [] }) {
                         )}
                         Connect TCP
                       </Button>
-                      <Button
-                        onClick={() => syncTime(machine)}
-                        disabled={syncingId === machine.id}
-                        variant="secondary"
-                        size="sm"
-                        className="gap-2"
-                      >
-                        {syncingId === machine.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Clock className="h-4 w-4" />
-                        )}
-                        Sync Time
-                      </Button>
-                      <Button
-                        onClick={() => toggleActive(machine)}
-                        variant={machine.is_active ? 'outline' : 'default'}
-                        size="sm"
-                        className="gap-2"
-                      >
-                        <Power className="h-4 w-4" />
-                        {machine.is_active ? 'Nonaktifkan' : 'Aktifkan'}
-                      </Button>
-                      <Button onClick={() => openEdit(machine)} variant="outline" size="sm" className="gap-2">
-                        <Pencil className="h-4 w-4" />
-                        Edit
-                      </Button>
-                      <Button
-                        onClick={() => deleteMachine(machine.id)}
-                        variant="destructive"
-                        size="sm"
-                        className="gap-2"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Delete
-                      </Button>
+                      {canManage && (
+                        <>
+                          <Button
+                            onClick={() => syncTime(machine)}
+                            disabled={syncingId === machine.id}
+                            variant="secondary"
+                            size="sm"
+                            className="gap-2"
+                          >
+                            {syncingId === machine.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Clock className="h-4 w-4" />
+                            )}
+                            Sync Time
+                          </Button>
+                          <Button
+                            onClick={() => toggleActive(machine)}
+                            variant={machine.is_active ? 'outline' : 'default'}
+                            size="sm"
+                            className="gap-2"
+                          >
+                            <Power className="h-4 w-4" />
+                            {machine.is_active ? 'Nonaktifkan' : 'Aktifkan'}
+                          </Button>
+                          <Button onClick={() => openEdit(machine)} variant="outline" size="sm" className="gap-2">
+                            <Pencil className="h-4 w-4" />
+                            Edit
+                          </Button>
+                          <Button
+                            onClick={() => deleteMachine(machine.id)}
+                            variant="destructive"
+                            size="sm"
+                            className="gap-2"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Delete
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </CardContent>

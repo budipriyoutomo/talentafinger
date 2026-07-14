@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AttendanceLog;
 use App\Models\Employee;
+use App\Models\User;
 use Illuminate\Support\Collection;
 use Throwable;
 
@@ -20,12 +21,16 @@ class AttendanceSyncService
     /**
      * Kirim semua log 'pending' (dan opsional 'failed') dalam satu batch.
      *
+     * $user membatasi log ke outlet wewenangnya, supaya tombol "kirim semua" milik
+     * seorang manajer tidak ikut mengirim log outlet orang lain. null = konteks
+     * SISTEM (command terjadwal AutoSendAttendance) yang memang tanpa batas.
+     *
      * @return array{success:bool, message:string, sent:int, failed:int}
      */
-    public function sendPending(bool $includeFailed = false): array
+    public function sendPending(bool $includeFailed = false, ?User $user = null): array
     {
         $statuses = $includeFailed ? ['pending', 'failed'] : ['pending'];
-        $logs = AttendanceLog::whereIn('status_sync', $statuses)->get();
+        $logs = AttendanceLog::visibleTo($user)->whereIn('status_sync', $statuses)->get();
 
         if ($logs->isEmpty()) {
             return ['success' => true, 'message' => 'Tidak ada data untuk dikirim', 'sent' => 0, 'failed' => 0];
@@ -39,11 +44,14 @@ class AttendanceSyncService
      * Bila $ids diisi, hanya log gagal dengan id tersebut yang dikirim ulang
      * (dipakai saat user mencentang baris tertentu); kosong = semua yang gagal.
      *
+     * $user membatasi ke outlet wewenangnya; null = konteks sistem (tanpa batas).
+     *
      * @param  array<int, string>  $ids
      */
-    public function sendFailed(array $ids = []): array
+    public function sendFailed(array $ids = [], ?User $user = null): array
     {
-        $logs = AttendanceLog::where('status_sync', 'failed')
+        $logs = AttendanceLog::visibleTo($user)
+            ->where('status_sync', 'failed')
             ->when($ids, fn ($query) => $query->whereIn('id', $ids))
             ->get();
 

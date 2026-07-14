@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
+import { usePermissions } from '@/lib/permissions'
 import { Download, Send, Loader2, X, ChevronLeft, ChevronRight, RefreshCw, ListChecks, AlertTriangle, SlidersHorizontal } from 'lucide-react'
 
 // Pilihan jeda auto-refresh (detik).
@@ -35,6 +36,10 @@ const formatTimestamp = (value) => {
 }
 
 export default function AttendanceLogs({ logs = [], machines = [], brands = [], outlets = [], filters = {}, pagination = {} }) {
+  // Tanpa attendance.send, semua tombol kirim disembunyikan (viewer = baca saja).
+  const { can } = usePermissions()
+  const canSend = can('attendance.send')
+
   const [sendingId, setSendingId] = useState(null)
   const [sendingAll, setSendingAll] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(false)
@@ -340,7 +345,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         cell: ({ row }) => {
           const log = row.original
           const status = log.status_sync
-          if (status === 'sent' || status === 'duplicate') {
+          if (status === 'sent' || status === 'duplicate' || !canSend) {
             return <span className="text-xs text-slate-400">-</span>
           }
           return (
@@ -361,7 +366,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         },
       },
     ],
-    [machines, sendingId, activeTab]
+    [machines, sendingId, activeTab, canSend]
   )
 
   const handleExport = () => {
@@ -413,14 +418,16 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
               <RefreshCw className={`h-4 w-4 ${autoRefresh ? 'animate-spin' : ''}`} />
               {autoRefresh ? `Auto ${REFRESH_INTERVAL}s` : 'Auto-refresh'}
             </Button>
-            <Button onClick={sendAllPending} disabled={sendingAll} className="gap-2">
-              {sendingAll ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-              Kirim Semua Pending
-            </Button>
+            {canSend && (
+              <Button onClick={sendAllPending} disabled={sendingAll} className="gap-2">
+                {sendingAll ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                Kirim Semua Pending
+              </Button>
+            )}
             <Button onClick={handleExport} variant="outline" className="gap-2">
               <Download className="h-4 w-4" />
               Export CSV
@@ -461,7 +468,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {activeTab === 'failed' && (
+                  {activeTab === 'failed' && canSend && (
                     <Button
                       onClick={resendFailed}
                       disabled={resendingFailed || (pagination.total ?? 0) === 0}

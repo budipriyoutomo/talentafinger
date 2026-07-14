@@ -13,22 +13,33 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
+/**
+ * Halaman-halaman Inertia. Sama seperti API, tiap halaman memeriksa dua hal:
+ * permission (boleh buka halamannya) dan scope (data outlet mana yang tampil).
+ * Menyembunyikan menu di sidebar saja tidak cukup — URL-nya masih bisa diketik.
+ */
 class DashboardController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $user = $request->user();
+
         // Status LIVE dari last_seen_at; kolom `status` di DB basi (lihat /api/machines).
-        $machines = Machine::all()->each(function ($m) {
+        $machines = Machine::visibleTo($user)->get()->each(function ($m) {
             $m->status = $m->isOnline() ? 'online' : 'offline';
         });
 
+        // Angka statistik ikut scope: manajer tak boleh melihat hitungan log
+        // outlet lain, sekalipun hanya berupa jumlah.
+        $scoped = fn () => AttendanceLog::visibleTo($user);
+
         $stats = [
-            'logs_today' => AttendanceLog::whereDate('created_at', today())->count(),
-            'sent_count' => AttendanceLog::where('status_sync', 'sent')->whereDate('created_at', today())->count(),
-            'failed_count' => AttendanceLog::where('status_sync', 'failed')->count(),
-            'queue_pending' => AttendanceLog::where('status_sync', 'pending')->count(),
+            'logs_today' => $scoped()->whereDate('created_at', today())->count(),
+            'sent_count' => $scoped()->where('status_sync', 'sent')->whereDate('created_at', today())->count(),
+            'failed_count' => $scoped()->where('status_sync', 'failed')->count(),
+            'queue_pending' => $scoped()->where('status_sync', 'pending')->count(),
             'queue_processing' => 0,
-            'queue_failed' => AttendanceLog::where('status_sync', 'failed')->count(),
+            'queue_failed' => $scoped()->where('status_sync', 'failed')->count(),
         ];
 
         return Inertia::render('Dashboard', [
@@ -37,9 +48,14 @@ class DashboardController extends Controller
         ]);
     }
 
-    public function machines()
+    public function machines(Request $request)
     {
-        $machines = Machine::query()
+        $this->authorize('viewAny', Machine::class);
+
+        $user = $request->user();
+
+        $machines = Machine::visibleTo($user)
+            ->with('outlet.brand.company')
             ->withCount(['attendanceLogs'])
             ->orderBy('name')
             ->get()
@@ -47,6 +63,11 @@ class DashboardController extends Controller
                 'id' => $m->id,
                 'serial_number' => $m->serial_number,
                 'name' => $m->name,
+                // Penempatan organisasi mesin. Null = belum di-assign outlet.
+                'outlet_id' => $m->outlet_id,
+                'outlet_name' => $m->outlet?->name,
+                'brand_name' => $m->outlet?->brand?->name,
+                'company_name' => $m->outlet?->brand?->company?->name,
                 'location' => $m->location,
                 'ip_address' => $m->ip_address,
                 'sdk_port' => $m->sdk_port,
@@ -65,11 +86,19 @@ class DashboardController extends Controller
 
         return Inertia::render('Machines', [
             'machines' => $machines,
+            // Pohon organisasi untuk dropdown cascading Company -> Brand -> Outlet
+            // di form mesin. Ikut disaring supaya nama outlet perusahaan lain tak
+            // bocor lewat dropdown.
+            'companies' => $this->orgTree($user),
         ]);
     }
 
     public function attendanceLogs(Request $request)
     {
+        $this->authorize('viewAny', AttendanceLog::class);
+
+        $user = $request->user();
+
         $machineId = $request->query('machine_id');
         $brandId = $request->query('brand_id');
         $outletId = $request->query('outlet_id');
@@ -79,43 +108,34 @@ class DashboardController extends Controller
         $status = $request->query('status');
         $status = in_array($status, ['pending', 'sent', 'failed', 'duplicate'], true) ? $status : null;
 
-        // Preload semua karyawan ber-Biometric ID sekali, dipetakan per PIN, supaya
-        // nama karyawan log bisa di-resolve tanpa query berulang (hindari N+1).
-        $employeeByPin = Employee::whereNotNull('biometric_id')
+        // Preload karyawan ber-Biometric ID sekali, dipetakan per PIN, supaya nama
+        // karyawan log bisa di-resolve tanpa query berulang (hindari N+1).
+        $employeeByPin = Employee::visibleTo($user)
+            ->whereNotNull('biometric_id')
             ->get()
             ->keyBy('biometric_id');
-
-        // Filter brand/outlet bekerja lewat karyawan: log tak menyimpan brand/outlet
-        // langsung, jadi ambil PIN (biometric_id) karyawan pada brand/outlet terpilih
-        // lalu batasi query log ke PIN tsb.
-        $orgPins = null;
-        if ($brandId || $outletId) {
-            $orgPins = Employee::query()
-                ->whereNotNull('biometric_id')
-                ->when($outletId, fn($q) => $q->whereHas('outlets', fn($qq) => $qq->where('outlets.id', $outletId)))
-                ->when($brandId && ! $outletId,
-                    fn($q) => $q->whereHas('outlets', fn($qq) => $qq->where('brand_id', $brandId)))
-                ->pluck('biometric_id');
-        }
 
         // Ukuran halaman dari pemilih "Rows per page" di UI; whitelist supaya tak
         // ada nilai ekstrem yang bikin query berat.
         $perPage = (int) $request->query('per_page', 100);
         $perPage = in_array($perPage, [10, 50, 100, 250, 500], true) ? $perPage : 100;
 
-        $paginator = AttendanceLog::with('machine')
+        // Filter brand/outlet mengikuti outlet MESIN — sama dengan dasar yang
+        // dipakai pembatasan akses, jadi tak ada dua definisi "outlet-nya log".
+        // Filter dari browser tak perlu diperiksa terhadap scope: visibleTo()
+        // sudah membatasi lebih dulu, jadi menebak outlet_id orang lain hanya
+        // menghasilkan daftar kosong, bukan kebocoran.
+        $paginator = AttendanceLog::visibleTo($user)
+            ->with('machine')
             ->when($machineId, fn($q) => $q->where('machine_id', $machineId))
             ->when($status, fn($q) => $q->where('status_sync', $status))
             ->when($dateFrom, fn($q) => $q->whereDate('timestamp', '>=', $dateFrom))
             ->when($dateTo, fn($q) => $q->whereDate('timestamp', '<=', $dateTo))
-            ->when($orgPins !== null, function ($q) use ($orgPins) {
-                // Tak ada karyawan yang cocok -> hasil kosong.
-                if ($orgPins->isEmpty()) {
-                    $q->whereRaw('1 = 0');
-                    return;
-                }
-                $q->whereIn('biometric_id_lokal', $orgPins->all());
-            })
+            ->when($outletId, fn($q) => $q->whereHas('machine', fn($qq) => $qq->where('outlet_id', $outletId)))
+            ->when($brandId && ! $outletId, fn($q) => $q->whereHas(
+                'machine.outlet',
+                fn($qq) => $qq->where('brand_id', $brandId),
+            ))
             ->orderBy('created_at', 'desc')
             ->paginate($perPage)
             ->withQueryString()
@@ -139,9 +159,9 @@ class DashboardController extends Controller
                 'from' => $paginator->firstItem(),
                 'to' => $paginator->lastItem(),
             ],
-            'machines' => Machine::all(),
-            'brands' => Brand::orderBy('name')->get(['id', 'name', 'company_id']),
-            'outlets' => Outlet::orderBy('name')->get(['id', 'name', 'brand_id']),
+            'machines' => Machine::visibleTo($user)->get(),
+            'brands' => Brand::visibleTo($user)->orderBy('name')->get(['id', 'name', 'company_id']),
+            'outlets' => Outlet::visibleTo($user)->orderBy('name')->get(['id', 'name', 'brand_id']),
             'filters' => [
                 'machine_id' => $machineId,
                 'brand_id' => $brandId,
@@ -157,10 +177,14 @@ class DashboardController extends Controller
      * Halaman Employees. Identitas karyawan untuk absensi & sidik jari memakai
      * Biometric ID (PIN global) — tidak ada lagi mapping per-mesin.
      */
-    public function employeeManagement()
+    public function employeeManagement(Request $request)
     {
+        $this->authorize('viewAny', Employee::class);
+
+        $user = $request->user();
+
         return Inertia::render('EmployeeManagement', [
-            'employees' => Employee::query()
+            'employees' => Employee::visibleTo($user)
                 ->withCount('biometricTemplates')
                 ->withMax('biometricTemplates', 'enrolled_at')
                 ->with('outlets.brand.company')
@@ -177,7 +201,10 @@ class DashboardController extends Controller
                     'fingerprints_count' => $e->biometric_templates_count,
                     'fingerprints_enrolled_at' => $e->biometric_templates_max_enrolled_at,
                     // Banyak outlet per karyawan; brand & company tersirat per outlet.
+                    // Outlet di luar scope user sengaja TIDAK ditampilkan — ia tak
+                    // perlu tahu karyawannya juga terdaftar di outlet perusahaan lain.
                     'outlets' => $e->outlets
+                        ->filter(fn($o) => $user->canAccessOutlet($o->id))
                         ->sortBy('name')
                         ->map(fn($o) => [
                             'id' => $o->id,
@@ -189,19 +216,20 @@ class DashboardController extends Controller
                         ])->values(),
                 ]),
             // Hierarki untuk dropdown cascading di form karyawan + panel struktur.
-            'companies' => Company::with(['brands' => fn($q) => $q->orderBy('name'),
-                    'brands.outlets' => fn($q) => $q->orderBy('name')])
-                ->orderBy('name')
-                ->get(),
-            'machines' => Machine::all(),
+            'companies' => $this->orgTree($user),
+            'machines' => Machine::visibleTo($user)->get(),
         ]);
     }
 
-    public function fingerprints()
+    public function fingerprints(Request $request)
     {
+        $this->authorizePermission($request, 'fingerprint.view');
+
+        $user = $request->user();
+
         // Daftar user/sidik jari diambil LIVE dari mesin (TCP 4370) di sisi
         // frontend, jadi controller cukup mengirim daftar mesin + status IP-nya.
-        $machines = Machine::orderBy('name')->get()->map(fn($m) => [
+        $machines = Machine::visibleTo($user)->orderBy('name')->get()->map(fn($m) => [
             'id' => $m->id,
             'name' => $m->name,
             'serial_number' => $m->serial_number,
@@ -212,13 +240,15 @@ class DashboardController extends Controller
 
         // Peta PIN (biometric_id) -> data karyawan, untuk mencocokkan user yang
         // dibaca LIVE dari mesin dengan master & menampilkan Brand - Outlet-nya.
-        $employeesByPin = Employee::whereNotNull('biometric_id')
+        $employeesByPin = Employee::visibleTo($user)
+            ->whereNotNull('biometric_id')
             ->with('outlets.brand')
             ->get()
             ->mapWithKeys(fn($e) => [(string) $e->biometric_id => [
                 'id' => $e->id,
                 'name' => $e->name,
                 'outlets' => $e->outlets
+                    ->filter(fn($o) => $user->canAccessOutlet($o->id))
                     ->sortBy('name')
                     ->map(fn($o) => [
                         'outlet_name' => $o->name,
@@ -236,9 +266,13 @@ class DashboardController extends Controller
      * Halaman pengaturan aplikasi. Kelompokkan baris setting per `group`
      * untuk dirender jadi beberapa kartu di frontend. Field bertipe password
      * tidak pernah dikirim nilainya ke frontend (hanya flag terisi/tidak).
+     *
+     * Admin-only: memuat kredensial Talenta dan daftar seluruh user.
      */
-    public function settings()
+    public function settings(Request $request)
     {
+        $this->authorizePermission($request, 'setting.manage');
+
         $groups = Setting::orderBy('id')->get()
             ->map(fn ($s) => [
                 'key' => $s->key,
@@ -258,9 +292,30 @@ class DashboardController extends Controller
 
         return Inertia::render('Settings', [
             'groups' => $groups,
-            'users' => User::orderBy('name')->get(['id', 'name', 'email', 'role', 'created_at']),
+            // Scope tiap user ikut dikirim supaya form bisa mencentang ulang
+            // Company/Brand/Outlet yang jadi wewenangnya.
+            'users' => User::with('dataScopes')->orderBy('name')->get()->map(fn (User $u) => [
+                ...$u->only(['id', 'name', 'email', 'role', 'created_at']),
+                'company_ids' => $u->dataScopes->where('scope_type', 'company')->pluck('scope_id')->values(),
+                'brand_ids' => $u->dataScopes->where('scope_type', 'brand')->pluck('scope_id')->values(),
+                'outlet_ids' => $u->dataScopes->where('scope_type', 'outlet')->pluck('scope_id')->values(),
+            ]),
             'roles' => User::ROLES,
+            // Admin melihat seluruh pohon organisasi untuk menugaskan scope.
+            'companies' => $this->orgTree($request->user()),
         ]);
+    }
+
+    /** Pohon Company -> Brand -> Outlet, disaring ke scope user. */
+    private function orgTree(User $user)
+    {
+        return Company::visibleTo($user)
+            ->with([
+                'brands' => fn ($q) => $q->visibleTo($user)->orderBy('name'),
+                'brands.outlets' => fn ($q) => $q->visibleTo($user)->orderBy('name'),
+            ])
+            ->orderBy('name')
+            ->get();
     }
 
     /**
@@ -282,5 +337,4 @@ class DashboardController extends Controller
 
         return mb_substr($value, 0, 3).'••••'.mb_substr($value, -4);
     }
-
 }

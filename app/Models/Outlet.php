@@ -21,13 +21,39 @@ class Outlet extends Model
         'is_active' => 'boolean',
     ];
 
+    /** Outlet hilang -> penugasan user ke outlet itu ikut dibuang. */
+    protected static function booted(): void
+    {
+        static::deleting(function (Outlet $outlet) {
+            UserScope::where('scope_type', 'outlet')->where('scope_id', $outlet->id)->delete();
+        });
+    }
+
     public function brand()
     {
         return $this->belongsTo(Brand::class);
     }
 
+    /** Pivot employee_outlet: satu outlet punya banyak karyawan, dan sebaliknya. */
     public function employees()
     {
-        return $this->hasMany(Employee::class);
+        return $this->belongsToMany(Employee::class, 'employee_outlet')->withTimestamps();
+    }
+
+    public function machines()
+    {
+        return $this->hasMany(Machine::class);
+    }
+
+    /** Outlet yang boleh dilihat user. $user null = konteks sistem, tanpa batas. */
+    public function scopeVisibleTo($query, ?User $user)
+    {
+        $outletIds = $user?->scopedOutletIds();
+
+        if ($outletIds === null) {
+            return $query;
+        }
+
+        return $query->whereIn('id', $outletIds);
     }
 }

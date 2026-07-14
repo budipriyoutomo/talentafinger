@@ -38,4 +38,20 @@ class Employee extends Model
     {
         return $this->hasMany(BiometricTemplate::class);
     }
+
+    /**
+     * Karyawan terlihat bila punya MINIMAL SATU outlet di dalam scope user.
+     * Karyawan tanpa outlet sama sekali hanya terlihat oleh user tanpa batas.
+     * $user null = konteks sistem (queue/command), tanpa batas.
+     */
+    public function scopeVisibleTo($query, ?User $user)
+    {
+        $outletIds = $user?->scopedOutletIds();
+
+        if ($outletIds === null) {
+            return $query;
+        }
+
+        return $query->whereHas('outlets', fn ($q) => $q->whereIn('outlets.id', $outletIds));
+    }
 }

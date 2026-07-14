@@ -7,6 +7,7 @@ import { DataTable } from '@/components/DataTable'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
+import { usePermissions } from '@/lib/permissions'
 import { Send, Fingerprint, Loader2, RefreshCw, X, Trash2, UserPlus, Check } from 'lucide-react'
 
 function csrf() {
@@ -14,6 +15,13 @@ function csrf() {
 }
 
 export default function Fingerprints({ machines = [], employeesByPin = {} }) {
+  // Tiga izin berbeda bermain di halaman ini: sebar (sync), hapus dari mesin
+  // (delete), dan simpan ke master karyawan (employee.manage).
+  const { can } = usePermissions()
+  const canSync = can('fingerprint.sync')
+  const canDelete = can('fingerprint.delete')
+  const canManageEmployee = can('employee.manage')
+
   const withIp = machines.filter((m) => m.ip_address)
   const [sourceId, setSourceId] = useState(withIp[0]?.id || '')
   const [users, setUsers] = useState([])
@@ -417,12 +425,17 @@ export default function Fingerprints({ machines = [], employeesByPin = {} }) {
         cell: ({ row }) => (
           <div className="flex items-center gap-2">
             {row.original.fingers > 0 ? (
-              <Button onClick={() => openPush([row.original.pin])} size="sm" className="gap-2">
-                <Send className="h-3 w-3" />
-                Sebar
-              </Button>
+              canSync && (
+                <Button onClick={() => openPush([row.original.pin])} size="sm" className="gap-2">
+                  <Send className="h-3 w-3" />
+                  Sebar
+                </Button>
+              )
             ) : (
               <span className="text-xs text-slate-400">tanpa sidik jari</span>
+            )}
+            {!canSync && row.original.fingers > 0 && (
+              <span className="text-xs text-slate-400">{row.original.fingers} jari</span>
             )}
             {savedPins[row.original.pin] ? (
               <span className="inline-flex items-center gap-1 text-xs text-green-600" title={
@@ -436,35 +449,39 @@ export default function Fingerprints({ machines = [], employeesByPin = {} }) {
                 {savedPins[row.original.pin].captureError && <span className="text-amber-600"> · jari gagal</span>}
               </span>
             ) : (
+              canManageEmployee && (
+                <Button
+                  onClick={() => saveToMaster(row.original)}
+                  disabled={savingPin === row.original.pin}
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                >
+                  {savingPin === row.original.pin ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <UserPlus className="h-3 w-3" />
+                  )}
+                  Simpan ke Master
+                </Button>
+              )
+            )}
+            {canDelete && (
               <Button
-                onClick={() => saveToMaster(row.original)}
-                disabled={savingPin === row.original.pin}
-                variant="outline"
+                onClick={() => deleteUser(row.original)}
+                disabled={deletingPin === row.original.pin}
+                variant="destructive"
                 size="sm"
                 className="gap-1.5"
               >
-                {savingPin === row.original.pin ? (
+                {deletingPin === row.original.pin ? (
                   <Loader2 className="h-3 w-3 animate-spin" />
                 ) : (
-                  <UserPlus className="h-3 w-3" />
+                  <Trash2 className="h-3 w-3" />
                 )}
-                Simpan ke Master
+                Hapus
               </Button>
             )}
-            <Button
-              onClick={() => deleteUser(row.original)}
-              disabled={deletingPin === row.original.pin}
-              variant="destructive"
-              size="sm"
-              className="gap-1.5"
-            >
-              {deletingPin === row.original.pin ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Trash2 className="h-3 w-3" />
-              )}
-              Hapus
-            </Button>
           </div>
         ),
       },
@@ -725,34 +742,42 @@ export default function Fingerprints({ machines = [], employeesByPin = {} }) {
                   {users.length} user terbaca
                   {selectedPins.length > 0 && ` · ${selectedPins.length} dipilih`}
                 </CardDescription>
-                <label className="mt-2 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="h-3.5 w-3.5"
-                    checked={captureOnSave}
-                    onChange={(e) => setCaptureOnSave(e.target.checked)}
-                  />
-                  Sekalian tarik sidik jari ke DB saat simpan ke master
-                </label>
+                {canManageEmployee && (
+                  <label className="mt-2 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="h-3.5 w-3.5"
+                      checked={captureOnSave}
+                      onChange={(e) => setCaptureOnSave(e.target.checked)}
+                    />
+                    Sekalian tarik sidik jari ke DB saat simpan ke master
+                  </label>
+                )}
               </div>
               {selectedPins.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    onClick={() => openPush(selectedPinsWithFingers)}
-                    disabled={selectedPinsWithFingers.length === 0}
-                    className="gap-2"
-                  >
-                    <Send className="h-4 w-4" />
-                    Sebar Terpilih ({selectedPinsWithFingers.length})
-                  </Button>
-                  <Button onClick={saveSelectedToMaster} disabled={bulkSaving} variant="outline" className="gap-2">
-                    {bulkSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-                    Simpan Terpilih ke Master ({selectedPins.length})
-                  </Button>
-                  <Button onClick={deleteSelected} disabled={deletingBulk} variant="destructive" className="gap-2">
-                    {deletingBulk ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                    Hapus Terpilih ({selectedPins.length})
-                  </Button>
+                  {canSync && (
+                    <Button
+                      onClick={() => openPush(selectedPinsWithFingers)}
+                      disabled={selectedPinsWithFingers.length === 0}
+                      className="gap-2"
+                    >
+                      <Send className="h-4 w-4" />
+                      Sebar Terpilih ({selectedPinsWithFingers.length})
+                    </Button>
+                  )}
+                  {canManageEmployee && (
+                    <Button onClick={saveSelectedToMaster} disabled={bulkSaving} variant="outline" className="gap-2">
+                      {bulkSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+                      Simpan Terpilih ke Master ({selectedPins.length})
+                    </Button>
+                  )}
+                  {canDelete && (
+                    <Button onClick={deleteSelected} disabled={deletingBulk} variant="destructive" className="gap-2">
+                      {deletingBulk ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      Hapus Terpilih ({selectedPins.length})
+                    </Button>
+                  )}
                   <Button variant="outline" onClick={clearSelection} className="gap-2">
                     <X className="h-4 w-4" />
                     Bersihkan

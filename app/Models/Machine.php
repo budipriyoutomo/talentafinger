@@ -14,6 +14,7 @@ class Machine extends Model
     protected $fillable = [
         'serial_number',
         'name',
+        'outlet_id',
         'location',
         'ip_address',
         'sdk_port',
@@ -35,9 +36,38 @@ class Machine extends Model
         'tcp_latency_ms' => 'integer',
     ];
 
+    /**
+     * Outlet tempat mesin ini terpasang. Brand & company tersirat dari outlet.
+     * Null = belum di-assign (mesin lama).
+     */
+    public function outlet()
+    {
+        return $this->belongsTo(Outlet::class);
+    }
+
     public function attendanceLogs()
     {
         return $this->hasMany(AttendanceLog::class);
+    }
+
+    /**
+     * Batasi ke mesin yang outlet-nya masuk scope user. Mesin yang belum
+     * ditempatkan (outlet_id NULL) otomatis tidak ikut, karena whereIn tak
+     * pernah cocok dengan NULL — hanya user tanpa batas yang melihatnya.
+     *
+     * $user null = konteks SISTEM (queue job / command terjadwal), tanpa batas.
+     * Aman karena semua rute berada di balik middleware `auth`, jadi permintaan
+     * dari browser selalu punya user.
+     */
+    public function scopeVisibleTo($query, ?User $user)
+    {
+        $outletIds = $user?->scopedOutletIds();
+
+        if ($outletIds === null) {
+            return $query;
+        }
+
+        return $query->whereIn('outlet_id', $outletIds);
     }
 
     public function isOnline(): bool

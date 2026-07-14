@@ -28,4 +28,21 @@ class AttendanceLog extends Model
     {
         return $this->belongsTo(Machine::class);
     }
+
+    /**
+     * Log mengikuti outlet MESIN tempat ia terekam (bukan outlet karyawan),
+     * karena log memang peristiwa fisik di outlet tersebut. Konsekuensinya: log
+     * dari mesin yang belum ditempatkan hanya terlihat oleh user tanpa batas.
+     * $user null = konteks sistem (queue/command), tanpa batas.
+     */
+    public function scopeVisibleTo($query, ?User $user)
+    {
+        $outletIds = $user?->scopedOutletIds();
+
+        if ($outletIds === null) {
+            return $query;
+        }
+
+        return $query->whereHas('machine', fn ($q) => $q->whereIn('outlet_id', $outletIds));
+    }
 }

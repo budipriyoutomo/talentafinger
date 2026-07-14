@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Trash2, Plus, Pencil, Fingerprint, Send, X, SlidersHorizontal } from 'lucide-react'
+import { usePermissions } from '@/lib/permissions'
 import EmployeeFingerprintDialog from '@/components/EmployeeFingerprintDialog'
 import BulkDistributeDialog from '@/components/BulkDistributeDialog'
 
@@ -39,6 +40,11 @@ function csrf() {
 }
 
 export default function EmployeesPanel({ employees = [], companies = [], machines = [] }) {
+  // employee.manage = tambah/ubah/hapus karyawan; fingerprint.sync = sebar massal.
+  const { can } = usePermissions()
+  const canManage = can('employee.manage')
+  const canSyncFingerprint = can('fingerprint.sync')
+
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [formData, setFormData] = useState(emptyForm)
@@ -402,28 +408,31 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
       {
         id: 'actions',
         header: 'Aksi',
-        cell: ({ row }) => (
-          <div className="flex gap-2">
-            <Button onClick={() => openEdit(row.original)} variant="outline" size="sm" className="gap-1">
-              <Pencil className="h-3 w-3" />
-              Edit
-            </Button>
-            <Button onClick={() => deleteEmployee(row.original.id)} variant="destructive" size="sm" className="gap-1">
-              <Trash2 className="h-3 w-3" />
-              Hapus
-            </Button>
-          </div>
-        ),
+        cell: ({ row }) =>
+          canManage ? (
+            <div className="flex gap-2">
+              <Button onClick={() => openEdit(row.original)} variant="outline" size="sm" className="gap-1">
+                <Pencil className="h-3 w-3" />
+                Edit
+              </Button>
+              <Button onClick={() => deleteEmployee(row.original.id)} variant="destructive" size="sm" className="gap-1">
+                <Trash2 className="h-3 w-3" />
+                Hapus
+              </Button>
+            </div>
+          ) : (
+            <span className="text-xs text-slate-400">-</span>
+          ),
       },
     ],
-    [selected, allSelected, selectableIds]
+    [selected, allSelected, selectableIds, canManage]
   )
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          {selectedIds.length > 0 && (
+          {canSyncFingerprint && selectedIds.length > 0 && (
             <>
               <Button onClick={() => setBulkOpen(true)} className="gap-2">
                 <Send className="h-4 w-4" />
@@ -436,13 +445,15 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
             </>
           )}
         </div>
-        <Button onClick={openCreate} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Add Employee
-        </Button>
+        {canManage && (
+          <Button onClick={openCreate} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Add Employee
+          </Button>
+        )}
       </div>
 
-      {showForm && (
+      {showForm && canManage && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4"
           onMouseDown={(e) => { if (e.target === e.currentTarget) closeForm() }}

@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import { Link, usePage } from '@inertiajs/react'
 import { cn } from '@/lib/utils'
+import { usePermissions } from '@/lib/permissions'
 import {
   LayoutDashboard,
   Cpu,
@@ -14,18 +15,26 @@ import {
 
 // `label` = teks di sidebar (pendek). `title` = judul halaman di topbar, dipakai
 // hanya kalau judulnya beda dari label (mis. "Logs" vs "Attendance Logs").
+// `permission` = izin minimum untuk melihat menunya; halaman itu sendiri tetap
+// dijaga di server (buka URL-nya langsung tanpa izin = 403).
 export const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/machines', label: 'Machines', icon: Cpu },
-  { href: '/attendance-logs', label: 'Logs', title: 'Attendance Logs', icon: FileText },
-  { href: '/employee-management', label: 'Employees', icon: UserCircle },
-  { href: '/fingerprints', label: 'Sidik Jari', icon: Fingerprint },
-  { href: '/settings', label: 'Pengaturan', icon: Settings },
+  { href: '/machines', label: 'Machines', icon: Cpu, permission: 'machine.view' },
+  { href: '/attendance-logs', label: 'Logs', title: 'Attendance Logs', icon: FileText, permission: 'attendance.view' },
+  { href: '/employee-management', label: 'Employees', icon: UserCircle, permission: 'employee.view' },
+  { href: '/fingerprints', label: 'Sidik Jari', icon: Fingerprint, permission: 'fingerprint.view' },
+  { href: '/settings', label: 'Pengaturan', icon: Settings, permission: 'setting.manage' },
 ]
 
 export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile }) {
   const { url } = usePage()
   const pathname = url.split('?')[0]
+  const { can } = usePermissions()
+
+  const visibleItems = useMemo(
+    () => navItems.filter((item) => !item.permission || can(item.permission)),
+    [can]
+  )
 
   // Drawer ditutup saat pindah halaman dan saat Esc ditekan.
   useEffect(() => {
@@ -88,7 +97,7 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
         </div>
 
         <nav aria-label="Menu utama" className="space-y-1 px-3 pb-4">
-          {navItems.map(({ href, label, icon: Icon }) => {
+          {visibleItems.map(({ href, label, icon: Icon }) => {
             const active = pathname === href
 
             return (
