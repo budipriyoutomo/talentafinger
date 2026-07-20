@@ -99,14 +99,11 @@ class DashboardController extends Controller
 
         $user = $request->user();
 
-        $machineId = $request->query('machine_id');
-        $brandId = $request->query('brand_id');
-        $outletId = $request->query('outlet_id');
-        $dateFrom = $request->query('date_from');
-        $dateTo = $request->query('date_to');
-        // Tab "Gagal" mengirim status=failed; whitelist supaya tak sembarang nilai.
-        $status = $request->query('status');
-        $status = in_array($status, ['pending', 'sent', 'failed', 'duplicate'], true) ? $status : null;
+        // Filter aktif dikirim apa adanya ke scope applyFilters(); di sanalah
+        // status di-whitelist dan brand/outlet diterjemahkan. Bentuk array ini
+        // sama persis dengan yang dikirim tombol "Kirim Ulang Semua Gagal",
+        // supaya tabel dan aksi kirim tak bisa berbeda tafsir.
+        $filters = AttendanceLog::filtersFromRequest($request);
 
         // Preload karyawan ber-Biometric ID sekali, dipetakan per PIN, supaya nama
         // karyawan log bisa di-resolve tanpa query berulang (hindari N+1).
@@ -120,22 +117,9 @@ class DashboardController extends Controller
         $perPage = (int) $request->query('per_page', 100);
         $perPage = in_array($perPage, [10, 50, 100, 250, 500], true) ? $perPage : 100;
 
-        // Filter brand/outlet mengikuti outlet MESIN — sama dengan dasar yang
-        // dipakai pembatasan akses, jadi tak ada dua definisi "outlet-nya log".
-        // Filter dari browser tak perlu diperiksa terhadap scope: visibleTo()
-        // sudah membatasi lebih dulu, jadi menebak outlet_id orang lain hanya
-        // menghasilkan daftar kosong, bukan kebocoran.
         $paginator = AttendanceLog::visibleTo($user)
             ->with('machine')
-            ->when($machineId, fn($q) => $q->where('machine_id', $machineId))
-            ->when($status, fn($q) => $q->where('status_sync', $status))
-            ->when($dateFrom, fn($q) => $q->whereDate('timestamp', '>=', $dateFrom))
-            ->when($dateTo, fn($q) => $q->whereDate('timestamp', '<=', $dateTo))
-            ->when($outletId, fn($q) => $q->whereHas('machine', fn($qq) => $qq->where('outlet_id', $outletId)))
-            ->when($brandId && ! $outletId, fn($q) => $q->whereHas(
-                'machine.outlet',
-                fn($qq) => $qq->where('brand_id', $brandId),
-            ))
+            ->applyFilters($filters)
             ->orderBy('created_at', 'desc')
             ->paginate($perPage)
             ->withQueryString()
@@ -159,17 +143,14 @@ class DashboardController extends Controller
                 'from' => $paginator->firstItem(),
                 'to' => $paginator->lastItem(),
             ],
-            'machines' => Machine::visibleTo($user)->get(),
-            'brands' => Brand::visibleTo($user)->orderBy('name')->get(['id', 'name', 'company_id']),
-            'outlets' => Outlet::visibleTo($user)->orderBy('name')->get(['id', 'name', 'brand_id']),
-            'filters' => [
-                'machine_id' => $machineId,
-                'brand_id' => $brandId,
-                'outlet_id' => $outletId,
-                'date_from' => $dateFrom,
-                'date_to' => $dateTo,
-                'status' => $status,
-            ],
+            // Isi dropdown ditulis sebagai closure, bukan nilai langsung. Inertia
+            // baru mengeksekusi closure kalau prop-nya memang ikut dikirim, jadi
+            // pindah halaman (partial reload `only: ['logs','pagination']`) tidak
+            // lagi ikut menembak tiga query ini. Pada load penuh tetap terkirim.
+            'machines' => fn () => Machine::visibleTo($user)->get(),
+            'brands' => fn () => Brand::visibleTo($user)->orderBy('name')->get(['id', 'name', 'company_id']),
+            'outlets' => fn () => Outlet::visibleTo($user)->orderBy('name')->get(['id', 'name', 'brand_id']),
+            'filters' => $filters,
         ]);
     }
 

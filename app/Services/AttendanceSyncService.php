@@ -14,9 +14,102 @@ use Throwable;
  */
 class AttendanceSyncService
 {
+    /**
+     * Banyak log per satu upload CSV ke Talenta. Bukan angka ajaib: satu CSV
+     * raksasa berisi puluhan ribu baris berisiko kena batas ukuran request di
+     * sisi Talenta dan bikin satu kegagalan menjatuhkan seluruh batch. Dipecah
+     * segini, satu chunk yang gagal hanya menjatuhkan chunk itu.
+     */
+    public const CHUNK_SIZE = 500;
+
     public function __construct(
         private MekariTalentaService $talenta,
     ) {}
+
+    /**
+     * Kirim ulang log gagal yang cocok filter, DIPECAH per CHUNK_SIZE.
+     *
+     * Daftar id di-snapshot lebih dulu (pluck) alih-alih meng-iterasi query
+     * hidup, karena pengiriman MENGUBAH status_sync dari 'failed' jadi 'sent' —
+     * kolom yang sama yang dipakai memfilter. Meng-chunk query semacam itu akan
+     * melewati baris diam-diam saat halaman bergeser. Snapshot id membuat yang
+     * diproses persis sama dengan yang dihitung di awal.
+     *
+     * $onProgress dipanggil tiap chunk selesai supaya pemanggil (job background)
+     * bisa menulis progres yang dipolling UI.
+     *
+     * @param  array<string, mixed>  $filters
+     * @param  array<int, string>  $ids  Kosong = semua yang cocok filter.
+     * @param  callable(int, int):void|null  $onProgress  (selesai, total)
+     * @return array{success:bool, message:string, sent:int, failed:int, total:int}
+     */
+    public function resendFailedChunked(
+        array $filters = [],
+        array $ids = [],
+        ?User $user = null,
+        ?callable $onProgress = null,
+    ): array {
+        $allIds = AttendanceLog::visibleTo($user)
+            ->applyFilters($filters + ['status' => 'failed'])
+            ->where('status_sync', 'failed')
+            ->when($ids, fn ($q) => $q->whereIn('id', $ids))
+            ->orderBy('created_at')
+            ->pluck('id')
+            ->all();
+
+        $total = count($allIds);
+
+        if ($total === 0) {
+            return ['success' => true, 'message' => 'Tidak ada data gagal untuk dikirim ulang',
+                'sent' => 0, 'failed' => 0, 'total' => 0];
+        }
+
+        $sent = 0;
+        $failed = 0;
+        $done = 0;
+        $errors = [];
+
+        foreach (array_chunk($allIds, self::CHUNK_SIZE) as $chunkIds) {
+            $logs = AttendanceLog::whereIn('id', $chunkIds)->get();
+
+            // Satu chunk yang meledak tak boleh menghentikan chunk berikutnya —
+            // kalau tidak, gangguan sesaat di tengah jalan membuang kerja yang
+            // sudah berhasil sebelumnya.
+            try {
+                $result = $this->sendLogs($logs);
+                $sent += $result['sent'];
+                $failed += $result['failed'];
+                if (! $result['success']) {
+                    $errors[] = $result['message'];
+                }
+            } catch (Throwable $e) {
+                $failed += $logs->count();
+                $errors[] = $e->getMessage();
+                AttendanceLog::whereIn('id', $chunkIds)
+                    ->where('status_sync', '!=', 'sent')
+                    ->update(['status_sync' => 'failed', 'error_message' => $e->getMessage()]);
+            }
+
+            $done += count($chunkIds);
+
+            if ($onProgress) {
+                $onProgress($done, $total);
+            }
+        }
+
+        $message = "Kirim ulang selesai: {$sent} terkirim, {$failed} gagal (dari {$total} log).";
+        if ($errors) {
+            $message .= ' Contoh error: ' . $errors[0];
+        }
+
+        return [
+            'success' => $failed === 0,
+            'message' => $message,
+            'sent' => $sent,
+            'failed' => $failed,
+            'total' => $total,
+        ];
+    }
 
     /**
      * Kirim semua log 'pending' (dan opsional 'failed') dalam satu batch.

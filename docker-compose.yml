@@ -111,7 +111,11 @@ services:
     network_mode: "service:vpn"
     volumes:
       - storagedata:/var/www/storage
-    command: ["php", "artisan", "queue:work", "--tries=3", "--timeout=90", "--sleep=3", "--max-time=3600"]
+    # --queue WAJIB menyebut 'attendance': job pengiriman absensi (SendAttendanceToTalenta,
+    # ResendFailedAttendance) memakai onQueue('attendance'), dan queue:work tanpa flag ini
+    # hanya menyimak antrean 'default' — jobnya akan mengendap selamanya tanpa error.
+    # 'default' tetap disebut lebih dulu supaya job lain tak ikut terabaikan.
+    command: ["php", "artisan", "queue:work", "--queue=default,attendance", "--tries=3", "--timeout=90", "--sleep=3", "--max-time=3600"]
     depends_on:
       app:
         condition: service_healthy

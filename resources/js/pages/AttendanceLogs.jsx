@@ -44,6 +44,9 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
   const [sendingAll, setSendingAll] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [resendingFailed, setResendingFailed] = useState(false)
+  // Job kirim ulang yang sedang berjalan di background + status terakhirnya.
+  const [resendJobId, setResendJobId] = useState(null)
+  const [resendJob, setResendJob] = useState(null)
   // Baris tab "Gagal" yang dicentang, key = id log (lihat getRowId di DataTable).
   const [rowSelection, setRowSelection] = useState({})
   // Panel filter disembunyikan default; otomatis terbuka bila ada filter aktif dari URL.
@@ -64,6 +67,41 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
     }, REFRESH_INTERVAL * 1000)
     return () => clearInterval(id)
   }, [autoRefresh])
+
+  // Polling status job kirim ulang selama belum selesai. Mengikuti pola yang
+  // sama dengan BulkDistributeDialog supaya tak ada dua gaya polling di repo.
+  useEffect(() => {
+    if (!resendJobId) return
+    let active = true
+    const tick = async () => {
+      try {
+        const res = await fetch(`/api/attendance-logs/resend-jobs/${resendJobId}`, {
+          headers: { Accept: 'application/json' },
+        })
+        const body = await res.json().catch(() => ({}))
+        if (!active || !body.ok) return
+        setResendJob(body)
+        if (body.status === 'done' || body.status === 'failed') {
+          setResendJobId(null)
+          setResendingFailed(false)
+          if (body.status === 'done') {
+            toast.success(body.summary?.message || 'Kirim ulang selesai.')
+          } else {
+            toast.error(body.error || 'Kirim ulang gagal.')
+          }
+          router.reload({ only: ['logs', 'pagination'] })
+        }
+      } catch {
+        // abaikan error sesaat; tick berikutnya mencoba lagi
+      }
+    }
+    tick()
+    const interval = setInterval(tick, 1500)
+    return () => {
+      active = false
+      clearInterval(interval)
+    }
+  }, [resendJobId])
 
   // Buang centang yang barisnya sudah tak ada di halaman ini (terkirim, ganti
   // halaman, atau filter berubah) supaya jumlah terpilih selalu jujur.
@@ -217,16 +255,20 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
     }
   }
 
-  // Tanpa centang = kirim ulang SEMUA log gagal; ada centang = hanya yang dipilih.
+  // Tanpa centang = kirim ulang semua log gagal YANG COCOK FILTER AKTIF (bukan
+  // seluruh isi database); ada centang = hanya baris yang dipilih.
   const resendFailed = () => {
     const partial = selectedIds.length > 0
+    const jumlah = pagination.total ?? 0
     confirmToast({
       message: partial
         ? `Kirim ulang ${selectedIds.length} data gagal terpilih ke Mekari Talenta?`
-        : 'Kirim ulang semua data gagal ke Mekari Talenta?',
+        : `Kirim ulang ${jumlah} data gagal ke Mekari Talenta?`,
       description: partial
         ? 'Hanya baris yang dicentang yang akan dicoba dikirim ulang.'
-        : 'Semua log berstatus failed akan dicoba dikirim ulang.',
+        : hasFilters
+          ? 'Hanya log gagal yang cocok dengan filter aktif yang akan dikirim ulang.'
+          : 'Semua log berstatus failed akan dicoba dikirim ulang.',
       confirmLabel: 'Kirim Ulang',
       onConfirm: runResendFailed,
     })
@@ -234,6 +276,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
 
   const runResendFailed = async () => {
     setResendingFailed(true)
+    setResendJob(null)
     try {
       const res = await fetch('/api/attendance-logs/send-failed', {
         method: 'POST',
@@ -242,16 +285,30 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
           'Accept': 'application/json',
           'X-CSRF-TOKEN': csrf(),
         },
-        body: JSON.stringify(selectedIds.length > 0 ? { ids: selectedIds } : {}),
+        // Filter aktif ikut dikirim supaya server memproses persis kumpulan log
+        // yang sedang ditampilkan tabel, bukan seluruh log gagal yang ada.
+        body: JSON.stringify({
+          ...(selectedIds.length > 0 ? { ids: selectedIds } : {}),
+          machine_id: filters.machine_id || '',
+          brand_id: filters.brand_id || '',
+          outlet_id: filters.outlet_id || '',
+          date_from: filters.date_from || '',
+          date_to: filters.date_to || '',
+        }),
       })
       const data = await res.json()
-      if (res.ok) toast.success(data.message)
-      else toast.error(data.message || 'Gagal mengirim ulang')
-      setRowSelection({})
-      router.reload({ only: ['logs', 'pagination'] })
+      if (res.status === 202 && data.job_id) {
+        // Pengiriman jalan di background; tombol tetap terkunci sampai polling
+        // melaporkan job selesai (lihat useEffect di bawah).
+        toast.success(data.message)
+        setRowSelection({})
+        setResendJobId(data.job_id)
+        return
+      }
+      toast.error(data.message || 'Gagal mengirim ulang')
+      setResendingFailed(false)
     } catch (err) {
       toast.error('Gagal mengirim ulang: ' + err.message)
-    } finally {
       setResendingFailed(false)
     }
   }
@@ -481,7 +538,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
                       )}
                       {selectedIds.length > 0
                         ? `Kirim Ulang Terpilih (${selectedIds.length})`
-                        : 'Kirim Ulang Semua Gagal'}
+                        : `Kirim Ulang ${pagination.total ?? 0} Gagal${hasFilters ? ' (sesuai filter)' : ''}`}
                     </Button>
                   )}
                   <Button
@@ -584,6 +641,32 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
             </div>
           </CardHeader>
           <CardContent>
+            {/* Progres kirim ulang background. Muncul hanya selama job berjalan,
+                supaya user tahu prosesnya masih hidup pada volume besar. */}
+            {resendJob && resendJob.status !== 'done' && resendJob.status !== 'failed' && (
+              <div className="mb-4 rounded-md border border-indigo-200 bg-indigo-50 p-3 dark:border-indigo-900 dark:bg-indigo-950">
+                <div className="mb-2 flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2 font-medium text-indigo-700 dark:text-indigo-300">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {resendJob.status === 'queued' ? 'Menunggu antrean…' : 'Mengirim ulang…'}
+                  </span>
+                  <span className="text-indigo-600 dark:text-indigo-400">
+                    {resendJob.progress_done} / {resendJob.progress_total}
+                  </span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-indigo-200 dark:bg-indigo-900">
+                  <div
+                    className="h-full rounded-full bg-indigo-500 transition-all"
+                    style={{
+                      width: `${resendJob.progress_total > 0
+                        ? Math.round((resendJob.progress_done / resendJob.progress_total) * 100)
+                        : 0}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
             <DataTable
               columns={columns}
               data={logs}

@@ -74,6 +74,7 @@ Route::delete('/outlets/{id}', [OrgController::class, 'destroyOutlet']);
 Route::get('/attendance-logs', [AttendanceController::class, 'index']);
 Route::post('/attendance-logs/send-pending', [AttendanceController::class, 'sendPending']);
 Route::post('/attendance-logs/send-failed', [AttendanceController::class, 'sendFailed']);
+Route::get('/attendance-logs/resend-jobs/{id}', [AttendanceController::class, 'resendJob']);
 Route::post('/attendance-logs/{id}/send', [AttendanceController::class, 'send']);
 
 // ===== Pengaturan aplikasi =====

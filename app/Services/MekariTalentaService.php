@@ -69,7 +69,14 @@ class MekariTalentaService
             'csv' => $csvContent,
         ]);
 
+        // Timeout eksplisit: tanpa ini satu upload yang menggantung bisa menahan
+        // worker (atau request web) sampai PHP sendiri yang menyerah, dan status
+        // log tak pernah sempat ditulis. connectTimeout dibuat pendek karena
+        // "server tak terjangkau" tak perlu ditunggu lama; timeout total longgar
+        // karena Talenta memproses CSV-nya dulu sebelum menjawab.
         $response = Http::withHeaders($headers)
+            ->connectTimeout(10)
+            ->timeout(120)
             ->attach('file', $csvContent, 'attendance.csv')
             ->post($url, [
                 'user_id' => Setting::value('mekari.fingerprint_user_id'),

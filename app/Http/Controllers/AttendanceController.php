@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\ResendFailedAttendance;
 use App\Models\AttendanceLog;
+use App\Models\AttendanceResendJob;
 use App\Services\AttendanceSyncService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 /**
  * Log absensi mengikuti outlet MESIN tempat ia terekam. Pengiriman massal
@@ -80,8 +83,15 @@ class AttendanceController extends Controller
     }
 
     /**
-     * Kirim ulang log berstatus 'failed' secara batch — MANUAL.
-     * Tanpa 'ids' = semua log gagal; dengan 'ids' = hanya baris yang dicentang user.
+     * Kirim ulang log berstatus 'failed' — MANUAL, dikerjakan di BACKGROUND.
+     *
+     * Tanpa 'ids' = semua log gagal YANG COCOK FILTER AKTIF; dengan 'ids' = hanya
+     * baris yang dicentang user. Filter ikut dikirim dari halaman dan dibaca lewat
+     * AttendanceLog::filtersFromRequest(), fungsi yang sama yang dipakai tabelnya —
+     * jadi "semua gagal" berarti persis yang tampil di layar setelah difilter,
+     * bukan seluruh isi database seperti perilaku lama.
+     *
+     * Mengembalikan 202 + job_id; progresnya dipolling lewat resendJob().
      */
     public function sendFailed(Request $request)
     {
@@ -92,8 +102,67 @@ class AttendanceController extends Controller
             'ids.*' => ['uuid'],
         ]);
 
-        // ids yang menunjuk log di luar scope tersaring diam-diam oleh visibleTo()
-        // di dalam service, jadi tak ada log orang lain yang ikut terkirim.
-        return response()->json($this->sync->sendFailed($data['ids'] ?? [], $request->user()));
+        $user = $request->user();
+        $ids = $data['ids'] ?? [];
+        $filters = AttendanceLog::filtersFromRequest($request);
+
+        // Hitung dulu supaya user tahu berapa yang akan diproses, dan supaya
+        // "tidak ada apa-apa untuk dikirim" tak perlu lewat queue sama sekali.
+        // ids di luar scope tersaring diam-diam oleh visibleTo(), jadi menebak id
+        // orang lain tak mengirim apa pun.
+        $total = AttendanceLog::visibleTo($user)
+            ->applyFilters($filters + ['status' => 'failed'])
+            ->where('status_sync', 'failed')
+            ->when($ids, fn ($q) => $q->whereIn('id', $ids))
+            ->count();
+
+        if ($total === 0) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Tidak ada data gagal untuk dikirim ulang.',
+            ], 422);
+        }
+
+        $job = AttendanceResendJob::create([
+            'user_id' => $user?->id,
+            'filters' => $filters,
+            'selected_ids' => $ids ?: null,
+            'status' => 'queued',
+            'progress_total' => $total,
+            'progress_done' => 0,
+        ]);
+
+        ResendFailedAttendance::dispatch($job->id);
+
+        return response()->json([
+            'ok' => true,
+            'job_id' => $job->id,
+            'total' => $total,
+            'message' => "Kirim ulang {$total} log gagal diproses di background.",
+        ], 202);
+    }
+
+    /** Status kirim ulang (dipolling frontend). */
+    public function resendJob(Request $request, string $id)
+    {
+        $this->authorizePermission($request, 'attendance.send');
+
+        $job = Str::isUuid($id) ? AttendanceResendJob::find($id) : null;
+
+        // Job milik orang lain diperlakukan sama dengan job yang tak ada: tak ada
+        // gunanya membocorkan bahwa id-nya benar tapi bukan punyamu.
+        if (! $job || ($job->user_id && $job->user_id !== $request->user()?->id)) {
+            return response()->json(['ok' => false, 'error' => 'Job tidak ditemukan.'], 404);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'job_id' => $job->id,
+            'status' => $job->status,
+            'progress_total' => $job->progress_total,
+            'progress_done' => $job->progress_done,
+            'summary' => $job->summary,
+            'error' => $job->error,
+        ]);
     }
 }
