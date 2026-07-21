@@ -15,12 +15,23 @@ use Throwable;
 class AttendanceSyncService
 {
     /**
-     * Banyak log per satu upload CSV ke Talenta. Bukan angka ajaib: satu CSV
-     * raksasa berisi puluhan ribu baris berisiko kena batas ukuran request di
-     * sisi Talenta dan bikin satu kegagalan menjatuhkan seluruh batch. Dipecah
+     * Banyak log per satu upload CSV ke Talenta.
+     *
+     * Dihitung dari batas ukuran file Talenta (5MB) dan worst-case panjang baris
+     * "badgeno;date;checktime\n": badgeno (talenta_employee_id) maksimal 100
+     * karakter (kolom `employees.talenta_employee_id`, lihat migrasi
+     * 2026_06_18_034238_create_employees_table), di-utf8mb4-kan jadi maks 400 byte;
+     * date (10) + checktime (8) + 2 delimiter + newline = 21 byte. Worst-case
+     * ~421 byte/baris, dibulatkan ke 450 byte untuk margin. Target dipakai HANYA
+     * ~50% dari 5MB (bukan mepet ke batas) karena Talenta belum resmi mengonfirmasi
+     * apakah ada batas JUMLAH baris terpisah dari batas ukuran file — lihat
+     * TODO-CSV-Chunk-Size.md. 5.000 baris * 450 byte (worst-case) ~= 2,25MB, ~43%
+     * dari 5MB; dalam praktik (badgeno pendek, mis. "1", "TAL-99") jauh lebih kecil
+     * lagi. Satu CSV raksasa berisi puluhan ribu baris tetap berisiko kena batas
+     * di sisi Talenta dan bikin satu kegagalan menjatuhkan seluruh batch — dipecah
      * segini, satu chunk yang gagal hanya menjatuhkan chunk itu.
      */
-    public const CHUNK_SIZE = 500;
+    public const CHUNK_SIZE = 5000;
 
     public function __construct(
         private MekariTalentaService $talenta,
@@ -57,19 +68,33 @@ class AttendanceSyncService
             ->pluck('id')
             ->all();
 
-        $total = count($allIds);
-
-        if ($total === 0) {
+        if (empty($allIds)) {
             return ['success' => true, 'message' => 'Tidak ada data gagal untuk dikirim ulang',
                 'sent' => 0, 'failed' => 0, 'total' => 0];
         }
 
+        return $this->sendIdsChunked($allIds, 'Kirim ulang', $onProgress);
+    }
+
+    /**
+     * Ambil ulang log by id per CHUNK_SIZE lalu kirim, chunk demi chunk. Dipakai
+     * bersama oleh resendFailedChunked() DAN sendPending(), supaya SEMUA jalur
+     * pengiriman batch (termasuk auto-send terjadwal) melewati batas ukuran yang
+     * sama — backlog yang menumpuk tak lagi bisa jadi satu CSV raksasa dalam
+     * satu request.
+     *
+     * @param  array<int, string>  $ids
+     * @return array{success:bool, message:string, sent:int, failed:int, total:int}
+     */
+    private function sendIdsChunked(array $ids, string $label, ?callable $onProgress = null): array
+    {
+        $total = count($ids);
         $sent = 0;
         $failed = 0;
         $done = 0;
         $errors = [];
 
-        foreach (array_chunk($allIds, self::CHUNK_SIZE) as $chunkIds) {
+        foreach (array_chunk($ids, self::CHUNK_SIZE) as $chunkIds) {
             $logs = AttendanceLog::whereIn('id', $chunkIds)->get();
 
             // Satu chunk yang meledak tak boleh menghentikan chunk berikutnya —
@@ -97,7 +122,7 @@ class AttendanceSyncService
             }
         }
 
-        $message = "Kirim ulang selesai: {$sent} terkirim, {$failed} gagal (dari {$total} log).";
+        $message = "{$label} selesai: {$sent} terkirim, {$failed} gagal (dari {$total} log).";
         if ($errors) {
             $message .= ' Contoh error: ' . $errors[0];
         }
@@ -112,7 +137,12 @@ class AttendanceSyncService
     }
 
     /**
-     * Kirim semua log 'pending' (dan opsional 'failed') dalam satu batch.
+     * Kirim semua log 'pending' (dan opsional 'failed'), DIPECAH per CHUNK_SIZE.
+     *
+     * Dipakai baik oleh tombol "kirim semua" (manual) MAUPUN command terjadwal
+     * AutoSendAttendance. Tanpa chunking, backlog yang menumpuk (mis. setelah
+     * mesin/queue mati semalaman) akan jadi satu CSV raksasa dalam satu request —
+     * lihat sendIdsChunked().
      *
      * $user membatasi log ke outlet wewenangnya, supaya tombol "kirim semua" milik
      * seorang manajer tidak ikut mengirim log outlet orang lain. null = konteks
@@ -123,36 +153,13 @@ class AttendanceSyncService
     public function sendPending(bool $includeFailed = false, ?User $user = null): array
     {
         $statuses = $includeFailed ? ['pending', 'failed'] : ['pending'];
-        $logs = AttendanceLog::visibleTo($user)->whereIn('status_sync', $statuses)->get();
+        $ids = AttendanceLog::visibleTo($user)->whereIn('status_sync', $statuses)->pluck('id')->all();
 
-        if ($logs->isEmpty()) {
+        if (empty($ids)) {
             return ['success' => true, 'message' => 'Tidak ada data untuk dikirim', 'sent' => 0, 'failed' => 0];
         }
 
-        return $this->sendLogs($logs);
-    }
-
-    /**
-     * Kirim ulang HANYA log yang berstatus 'failed' — MANUAL (tombol di tab Gagal).
-     * Bila $ids diisi, hanya log gagal dengan id tersebut yang dikirim ulang
-     * (dipakai saat user mencentang baris tertentu); kosong = semua yang gagal.
-     *
-     * $user membatasi ke outlet wewenangnya; null = konteks sistem (tanpa batas).
-     *
-     * @param  array<int, string>  $ids
-     */
-    public function sendFailed(array $ids = [], ?User $user = null): array
-    {
-        $logs = AttendanceLog::visibleTo($user)
-            ->where('status_sync', 'failed')
-            ->when($ids, fn ($query) => $query->whereIn('id', $ids))
-            ->get();
-
-        if ($logs->isEmpty()) {
-            return ['success' => true, 'message' => 'Tidak ada data gagal untuk dikirim ulang', 'sent' => 0, 'failed' => 0];
-        }
-
-        return $this->sendLogs($logs);
+        return $this->sendIdsChunked($ids, 'Kirim');
     }
 
     /**

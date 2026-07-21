@@ -45,6 +45,9 @@ class MekariTalentaService
      *
      * @param  string  $csvContent  Isi CSV dengan header: badgeno,checktime
      */
+    /** Batas ukuran file Talenta untuk import-fingerprint. */
+    private const MAX_CSV_BYTES = 5 * 1024 * 1024;
+
     public function importFingerprint(string $csvContent): Response
     {
         $url = Setting::value('mekari.base_url') . '/attendance/import-fingerprint';
@@ -57,6 +60,19 @@ class MekariTalentaService
         $stamp = now()->format('Ymd-His-u');
         $savedPath = "talenta/import-fingerprint-{$stamp}.csv";
         Storage::put($savedPath, $csvContent);
+
+        // Jaga-jaga: AttendanceSyncService::CHUNK_SIZE dihitung dari asumsi
+        // worst-case panjang badgeno, bukan jaminan. Kalau suatu saat asumsi itu
+        // meleset (mis. format talenta_employee_id berubah jadi jauh lebih panjang),
+        // ini memberi sinyal SEBELUM Talenta menolak filenya diam-diam.
+        $sizeBytes = strlen($csvContent);
+        if ($sizeBytes > self::MAX_CSV_BYTES * 0.85) {
+            Log::warning('Talenta CSV mendekati batas ukuran file 5MB', [
+                'size_bytes' => $sizeBytes,
+                'limit_bytes' => self::MAX_CSV_BYTES,
+                'saved_csv' => storage_path('app/' . $savedPath),
+            ]);
+        }
 
         // Log REQUEST ke laravel.log. Authorization HMAC di-redact (mengandung tanda tangan),
         // dan field token tidak ikut dicatat utuh demi keamanan.

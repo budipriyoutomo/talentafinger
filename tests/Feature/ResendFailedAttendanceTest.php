@@ -158,10 +158,10 @@ class ResendFailedAttendanceTest extends TestCase
             onProgress: function (int $done) use (&$progress) { $progress[] = $done; },
         );
 
-        // 510 log dengan CHUNK_SIZE 500 = dua upload terpisah, bukan satu raksasa.
+        // CHUNK_SIZE + 10 log = dua upload terpisah, bukan satu raksasa.
         Http::assertSentCount(2);
-        $this->assertSame([500, 510], $progress);
-        $this->assertSame(510, $result['sent']);
+        $this->assertSame([AttendanceSyncService::CHUNK_SIZE, AttendanceSyncService::CHUNK_SIZE + 10], $progress);
+        $this->assertSame(AttendanceSyncService::CHUNK_SIZE + 10, $result['sent']);
     }
 
     public function test_status_job_orang_lain_tidak_bisa_diintip(): void

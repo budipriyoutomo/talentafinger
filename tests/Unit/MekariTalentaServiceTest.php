@@ -3,10 +3,12 @@
 namespace Tests\Unit;
 
 use App\Models\Setting;
+use App\Services\AttendanceSyncService;
 use App\Services\MekariTalentaService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -116,5 +118,47 @@ class MekariTalentaServiceTest extends TestCase
 
         $this->assertNotEmpty($csvFiles, 'CSV request harus tersimpan');
         $this->assertNotEmpty($respFiles, 'Response Talenta harus tersimpan');
+    }
+
+    public function test_warns_when_csv_mendekati_batas_5mb(): void
+    {
+        Storage::fake('local');
+        Http::fake(['*' => Http::response(['code' => 200], 200)]);
+        Log::spy();
+
+        $service = new MekariTalentaService();
+        // 4.6MB > 85% dari 5MB -> harus memicu warning.
+        $service->importFingerprint(str_repeat('x', (int) (4.6 * 1024 * 1024)));
+
+        Log::shouldHaveReceived('warning')
+            ->with('Talenta CSV mendekati batas ukuran file 5MB', \Mockery::type('array'))
+            ->once();
+    }
+
+    public function test_tidak_warning_untuk_csv_ukuran_normal(): void
+    {
+        Storage::fake('local');
+        Http::fake(['*' => Http::response(['code' => 200], 200)]);
+        Log::spy();
+
+        $service = new MekariTalentaService();
+        $service->importFingerprint("badgeno;date;checktime\n1001;2026-06-15;08:03:00\n");
+
+        Log::shouldNotHaveReceived('warning');
+    }
+
+    /**
+     * Sanity check untuk komentar di AttendanceSyncService::CHUNK_SIZE: pastikan
+     * angka itu tetap jauh di bawah batas 5MB walau worst-case badgeno 100 karakter
+     * utf8mb4 (400 byte). Kalau test ini merah, komentar penjelasan chunk size
+     * di AttendanceSyncService perlu ditulis ulang juga.
+     */
+    public function test_chunk_size_aman_terhadap_worst_case_badgeno(): void
+    {
+        $worstCaseRowBytes = 400 /* badgeno utf8mb4 100 char */ + 10 /* date */ + 8 /* checktime */ + 3 /* delimiter+newline */;
+        $worstCaseTotal = AttendanceSyncService::CHUNK_SIZE * $worstCaseRowBytes;
+
+        $this->assertLessThan(5 * 1024 * 1024 * 0.85, $worstCaseTotal,
+            'CHUNK_SIZE * worst-case row size harus tetap di bawah ambang warning 85% dari 5MB');
     }
 }

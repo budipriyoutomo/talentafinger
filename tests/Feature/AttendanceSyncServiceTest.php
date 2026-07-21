@@ -140,6 +140,35 @@ class AttendanceSyncServiceTest extends TestCase
         });
     }
 
+    public function test_sendPending_dipecah_per_chunk(): void
+    {
+        Http::fake(['*' => Http::response(['success' => true], 200)]);
+        $machine = $this->machine();
+        Employee::create([
+            'name' => 'Budi',
+            'talenta_employee_id' => 'TAL-99',
+            'biometric_id' => '1001',
+            'is_active' => true,
+        ]);
+
+        foreach (range(1, AttendanceSyncService::CHUNK_SIZE + 10) as $i) {
+            AttendanceLog::create([
+                'machine_id' => $machine->id,
+                'biometric_id_lokal' => '1001',
+                'timestamp' => '2026-06-15 08:00:00',
+                'status_sync' => 'pending',
+                'payload_raw' => 'raw',
+            ]);
+        }
+
+        $result = app(AttendanceSyncService::class)->sendPending();
+
+        // CHUNK_SIZE + 10 log dengan CHUNK_SIZE 500 = dua upload terpisah, bukan
+        // satu CSV raksasa dalam satu request.
+        Http::assertSentCount(2);
+        $this->assertSame(AttendanceSyncService::CHUNK_SIZE + 10, $result['sent']);
+    }
+
     public function test_log_without_matching_employee_is_failed_and_not_sent(): void
     {
         Http::fake();
