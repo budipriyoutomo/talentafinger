@@ -38,13 +38,19 @@ class AttendanceSyncService
     ) {}
 
     /**
-     * Kirim ulang log gagal yang cocok filter, DIPECAH per CHUNK_SIZE.
+     * Kirim ulang log yang cocok filter, DIPECAH per CHUNK_SIZE.
+     *
+     * $status menentukan kumpulan yang dikirim ulang: 'failed' (percobaan
+     * sebelumnya gagal) atau 'sent' (sudah pernah terkirim, dikirim lagi atas
+     * permintaan user — lihat AttendanceLog::RESENDABLE_STATUSES). Status tujuan
+     * sekaligus dipakai sebagai filter tabel, jadi yang diproses persis sama
+     * dengan yang ditampilkan tab-nya.
      *
      * Daftar id di-snapshot lebih dulu (pluck) alih-alih meng-iterasi query
-     * hidup, karena pengiriman MENGUBAH status_sync dari 'failed' jadi 'sent' —
-     * kolom yang sama yang dipakai memfilter. Meng-chunk query semacam itu akan
-     * melewati baris diam-diam saat halaman bergeser. Snapshot id membuat yang
-     * diproses persis sama dengan yang dihitung di awal.
+     * hidup, karena pengiriman MENGUBAH status_sync — kolom yang sama yang
+     * dipakai memfilter. Meng-chunk query semacam itu akan melewati baris
+     * diam-diam saat halaman bergeser. Snapshot id membuat yang diproses persis
+     * sama dengan yang dihitung di awal.
      *
      * $onProgress dipanggil tiap chunk selesai supaya pemanggil (job background)
      * bisa menulis progres yang dipolling UI.
@@ -54,22 +60,27 @@ class AttendanceSyncService
      * @param  callable(int, int):void|null  $onProgress  (selesai, total)
      * @return array{success:bool, message:string, sent:int, failed:int, total:int}
      */
-    public function resendFailedChunked(
+    public function resendChunked(
         array $filters = [],
         array $ids = [],
         ?User $user = null,
         ?callable $onProgress = null,
+        string $status = 'failed',
     ): array {
+        // Nilai asing (mis. dari baris job lama) jatuh ke 'failed' supaya tak ada
+        // jalur yang diam-diam mengirim ulang status yang tak boleh dikirim ulang.
+        $status = in_array($status, AttendanceLog::RESENDABLE_STATUSES, true) ? $status : 'failed';
+
         $allIds = AttendanceLog::visibleTo($user)
-            ->applyFilters($filters + ['status' => 'failed'])
-            ->where('status_sync', 'failed')
+            ->applyFilters($filters + ['status' => $status])
+            ->where('status_sync', $status)
             ->when($ids, fn ($q) => $q->whereIn('id', $ids))
             ->orderBy('created_at')
             ->pluck('id')
             ->all();
 
         if (empty($allIds)) {
-            return ['success' => true, 'message' => 'Tidak ada data gagal untuk dikirim ulang',
+            return ['success' => true, 'message' => 'Tidak ada data untuk dikirim ulang',
                 'sent' => 0, 'failed' => 0, 'total' => 0];
         }
 
@@ -78,7 +89,7 @@ class AttendanceSyncService
 
     /**
      * Ambil ulang log by id per CHUNK_SIZE lalu kirim, chunk demi chunk. Dipakai
-     * bersama oleh resendFailedChunked() DAN sendPending(), supaya SEMUA jalur
+     * bersama oleh resendChunked() DAN sendPending(), supaya SEMUA jalur
      * pengiriman batch (termasuk auto-send terjadwal) melewati batas ukuran yang
      * sama — backlog yang menumpuk tak lagi bisa jadi satu CSV raksasa dalam
      * satu request.

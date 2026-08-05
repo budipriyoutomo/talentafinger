@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { usePermissions } from '@/lib/permissions'
-import { Download, Send, Loader2, X, ChevronLeft, ChevronRight, RefreshCw, ListChecks, AlertTriangle, SlidersHorizontal } from 'lucide-react'
+import { Download, Send, Loader2, X, ChevronLeft, ChevronRight, RefreshCw, ListChecks, AlertTriangle, CheckCircle2, SlidersHorizontal } from 'lucide-react'
 
 // Pilihan jeda auto-refresh (detik).
 const REFRESH_INTERVAL = 15
@@ -24,7 +24,16 @@ const PER_PAGE_OPTIONS = [10, 50, 100, 250, 500]
 const TABS = [
   { key: '', label: 'Semua Log', icon: ListChecks },
   { key: 'failed', label: 'Gagal', icon: AlertTriangle },
+  { key: 'sent', label: 'Terkirim', icon: CheckCircle2 },
 ]
+
+// Tab yang barisnya boleh dikirim ULANG (centang + tombol kirim ulang massal).
+// Harus cocok dengan AttendanceLog::RESENDABLE_STATUSES di server — server tetap
+// yang memutuskan, ini cuma menentukan tombol mana yang ditampilkan.
+const RESENDABLE_TABS = ['failed', 'sent']
+
+// Kata yang dipakai di tombol & konfirmasi, per tab.
+const RESEND_LABEL = { failed: 'Gagal', sent: 'Terkirim' }
 
 // Format timestamp jadi "YYYY-MM-DD HH:mm:ss" (waktu lokal).
 const formatTimestamp = (value) => {
@@ -40,14 +49,19 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
   const { can } = usePermissions()
   const canSend = can('attendance.send')
 
+  // Tab aktif = status yang sedang ditampilkan; juga menentukan baris mana yang
+  // bisa dicentang dan status apa yang dikirim ulang.
+  const activeTab = filters.status || ''
+  const canResendTab = RESENDABLE_TABS.includes(activeTab)
+
   const [sendingId, setSendingId] = useState(null)
   const [sendingAll, setSendingAll] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(false)
-  const [resendingFailed, setResendingFailed] = useState(false)
+  const [resending, setResending] = useState(false)
   // Job kirim ulang yang sedang berjalan di background + status terakhirnya.
   const [resendJobId, setResendJobId] = useState(null)
   const [resendJob, setResendJob] = useState(null)
-  // Baris tab "Gagal" yang dicentang, key = id log (lihat getRowId di DataTable).
+  // Baris tab "Gagal"/"Terkirim" yang dicentang, key = id log (lihat getRowId di DataTable).
   const [rowSelection, setRowSelection] = useState({})
   // Panel filter disembunyikan default; otomatis terbuka bila ada filter aktif dari URL.
   const [showFilters, setShowFilters] = useState(
@@ -57,7 +71,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
   // Refresh tabel berkala tanpa kehilangan filter/scroll. Hanya muat ulang
   // 'logs' & 'pagination' (filter dipertahankan dari URL aktif).
   const sendingRef = useRef(false)
-  sendingRef.current = sendingId !== null || sendingAll || resendingFailed
+  sendingRef.current = sendingId !== null || sendingAll || resending
   useEffect(() => {
     if (!autoRefresh) return
     const id = setInterval(() => {
@@ -83,7 +97,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         setResendJob(body)
         if (body.status === 'done' || body.status === 'failed') {
           setResendJobId(null)
-          setResendingFailed(false)
+          setResending(false)
           if (body.status === 'done') {
             toast.success(body.summary?.message || 'Kirim ulang selesai.')
           } else {
@@ -103,15 +117,17 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
     }
   }, [resendJobId])
 
-  // Buang centang yang barisnya sudah tak ada di halaman ini (terkirim, ganti
-  // halaman, atau filter berubah) supaya jumlah terpilih selalu jujur.
+  // Buang centang yang barisnya sudah tak ada di halaman ini (status berubah,
+  // ganti halaman/tab, atau filter berubah) supaya jumlah terpilih selalu jujur.
   useEffect(() => {
-    const visible = new Set(logs.filter((l) => l.status_sync === 'failed').map((l) => l.id))
+    const visible = new Set(
+      canResendTab ? logs.filter((l) => l.status_sync === activeTab).map((l) => l.id) : []
+    )
     setRowSelection((prev) => {
       const next = Object.fromEntries(Object.entries(prev).filter(([id, on]) => on && visible.has(id)))
       return Object.keys(next).length === Object.keys(prev).length ? prev : next
     })
-  }, [logs])
+  }, [logs, activeTab, canResendTab])
 
   const selectedIds = useMemo(
     () => Object.keys(rowSelection).filter((id) => rowSelection[id]),
@@ -182,7 +198,6 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
   }
 
   // Ganti tab (status). Reset ke halaman 1; filter lain dipertahankan.
-  const activeTab = filters.status || ''
   const switchTab = (status) => {
     if (status === activeTab) return
     applyFilters({ status })
@@ -203,7 +218,9 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
 
   const csrf = () => document.querySelector('meta[name="csrf-token"]').content
 
-  const sendLog = async (id) => {
+  // force=true hanya untuk log yang SUDAH 'sent': tanpa flag itu server menolak,
+  // supaya pengiriman ulang selalu tindakan sadar, bukan klik tombol biasa.
+  const sendLog = async (id, force = false) => {
     setSendingId(id)
     try {
       const res = await fetch(`/api/attendance-logs/${id}/send`, {
@@ -213,6 +230,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
           'Accept': 'application/json',
           'X-CSRF-TOKEN': csrf(),
         },
+        body: JSON.stringify({ force }),
       })
       const data = await res.json()
       if (res.ok) toast.success(data.message)
@@ -255,30 +273,45 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
     }
   }
 
-  // Tanpa centang = kirim ulang semua log gagal YANG COCOK FILTER AKTIF (bukan
-  // seluruh isi database); ada centang = hanya baris yang dipilih.
-  const resendFailed = () => {
-    const partial = selectedIds.length > 0
-    const jumlah = pagination.total ?? 0
+  // Kirim ulang SATU log yang sudah terkirim. Selalu lewat konfirmasi karena
+  // datanya sudah ada di Talenta dan akan dikirim sekali lagi.
+  const resendLog = (log) => {
     confirmToast({
-      message: partial
-        ? `Kirim ulang ${selectedIds.length} data gagal terpilih ke Mekari Talenta?`
-        : `Kirim ulang ${jumlah} data gagal ke Mekari Talenta?`,
-      description: partial
-        ? 'Hanya baris yang dicentang yang akan dicoba dikirim ulang.'
-        : hasFilters
-          ? 'Hanya log gagal yang cocok dengan filter aktif yang akan dikirim ulang.'
-          : 'Semua log berstatus failed akan dicoba dikirim ulang.',
+      message: 'Kirim ulang data yang sudah terkirim ini ke Mekari Talenta?',
+      description: 'Data akan dikirim sekali lagi dengan badge & waktu yang sama.',
       confirmLabel: 'Kirim Ulang',
-      onConfirm: runResendFailed,
+      onConfirm: () => sendLog(log.id, true),
     })
   }
 
-  const runResendFailed = async () => {
-    setResendingFailed(true)
+  // Tanpa centang = kirim ulang semua log berstatus tab ini YANG COCOK FILTER
+  // AKTIF (bukan seluruh isi database); ada centang = hanya baris yang dipilih.
+  const resendBatch = () => {
+    const partial = selectedIds.length > 0
+    const jumlah = pagination.total ?? 0
+    const kata = activeTab === 'sent' ? 'terkirim' : 'gagal'
+    const catatanSent = activeTab === 'sent'
+      ? ' Data ini SUDAH ada di Talenta dan akan dikirim sekali lagi.'
+      : ''
+    confirmToast({
+      message: partial
+        ? `Kirim ulang ${selectedIds.length} data ${kata} terpilih ke Mekari Talenta?`
+        : `Kirim ulang ${jumlah} data ${kata} ke Mekari Talenta?`,
+      description: (partial
+        ? 'Hanya baris yang dicentang yang akan dicoba dikirim ulang.'
+        : hasFilters
+          ? `Hanya log ${kata} yang cocok dengan filter aktif yang akan dikirim ulang.`
+          : `Semua log berstatus ${activeTab} akan dicoba dikirim ulang.`) + catatanSent,
+      confirmLabel: 'Kirim Ulang',
+      onConfirm: runResendBatch,
+    })
+  }
+
+  const runResendBatch = async () => {
+    setResending(true)
     setResendJob(null)
     try {
-      const res = await fetch('/api/attendance-logs/send-failed', {
+      const res = await fetch('/api/attendance-logs/resend', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -289,6 +322,8 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         // yang sedang ditampilkan tabel, bukan seluruh log gagal yang ada.
         body: JSON.stringify({
           ...(selectedIds.length > 0 ? { ids: selectedIds } : {}),
+          // Status tab = kumpulan yang dikirim ulang ('failed' atau 'sent').
+          status: activeTab,
           machine_id: filters.machine_id || '',
           brand_id: filters.brand_id || '',
           outlet_id: filters.outlet_id || '',
@@ -306,14 +341,15 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         return
       }
       toast.error(data.message || 'Gagal mengirim ulang')
-      setResendingFailed(false)
+      setResending(false)
     } catch (err) {
       toast.error('Gagal mengirim ulang: ' + err.message)
-      setResendingFailed(false)
+      setResending(false)
     }
   }
 
-  // Kolom centang hanya muncul di tab "Gagal" (di situ semua baris bisa dikirim ulang).
+  // Kolom centang hanya muncul di tab "Gagal"/"Terkirim" (di situ semua baris
+  // memang bisa dikirim ulang).
   const selectColumn = {
     id: 'select',
     enableSorting: false,
@@ -336,7 +372,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
 
   const columns = useMemo(
     () => [
-      ...(activeTab === 'failed' ? [selectColumn] : []),
+      ...(canResendTab ? [selectColumn] : []),
       {
         accessorKey: 'timestamp',
         header: 'Timestamp',
@@ -402,28 +438,35 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         cell: ({ row }) => {
           const log = row.original
           const status = log.status_sync
-          if (status === 'sent' || status === 'duplicate' || !canSend) {
+          if (status === 'duplicate' || !canSend) {
             return <span className="text-xs text-slate-400">-</span>
           }
+          // Sudah terkirim = tetap bisa dikirim ulang, tapi tombolnya dibedakan
+          // (outline + konfirmasi) supaya tak tertukar dengan kirim biasa.
+          const isResend = status === 'sent'
           return (
             <Button
               size="sm"
-              onClick={() => sendLog(log.id)}
+              variant={isResend ? 'outline' : 'default'}
+              onClick={() => (isResend ? resendLog(log) : sendLog(log.id))}
               disabled={sendingId === log.id}
               className="gap-1"
+              title={isResend ? 'Kirim ulang data ini ke Talenta' : undefined}
             >
               {sendingId === log.id ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
+              ) : isResend ? (
+                <RefreshCw className="h-3 w-3" />
               ) : (
                 <Send className="h-3 w-3" />
               )}
-              Kirim
+              {isResend ? 'Kirim Ulang' : 'Kirim'}
             </Button>
           )
         },
       },
     ],
-    [machines, sendingId, activeTab, canSend]
+    [machines, sendingId, activeTab, canResendTab, canSend]
   )
 
   const handleExport = () => {
@@ -517,28 +560,37 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
             <div className="space-y-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <CardTitle>{activeTab === 'failed' ? 'Data Gagal Kirim' : 'Log Viewer'}</CardTitle>
+                  <CardTitle>
+                    {activeTab === 'failed'
+                      ? 'Data Gagal Kirim'
+                      : activeTab === 'sent'
+                        ? 'Data Sudah Terkirim'
+                        : 'Log Viewer'}
+                  </CardTitle>
                   <CardDescription>
                     {activeTab === 'failed'
                       ? 'Semua absensi berstatus failed • centang baris untuk pilih yang dikirim ulang, atau kosongkan centang untuk kirim ulang semua'
-                      : 'Click column headers to sort • Use search to filter'}
+                      : activeTab === 'sent'
+                        ? 'Absensi yang sudah diterima Talenta • bisa dikirim ULANG bila datanya hilang/berubah di Talenta'
+                        : 'Click column headers to sort • Use search to filter'}
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {activeTab === 'failed' && canSend && (
+                  {canResendTab && canSend && (
                     <Button
-                      onClick={resendFailed}
-                      disabled={resendingFailed || (pagination.total ?? 0) === 0}
+                      onClick={resendBatch}
+                      disabled={resending || (pagination.total ?? 0) === 0}
+                      variant={activeTab === 'sent' ? 'outline' : 'default'}
                       className="gap-2"
                     >
-                      {resendingFailed ? (
+                      {resending ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <RefreshCw className="h-4 w-4" />
                       )}
                       {selectedIds.length > 0
                         ? `Kirim Ulang Terpilih (${selectedIds.length})`
-                        : `Kirim Ulang ${pagination.total ?? 0} Gagal${hasFilters ? ' (sesuai filter)' : ''}`}
+                        : `Kirim Ulang ${pagination.total ?? 0} ${RESEND_LABEL[activeTab]}${hasFilters ? ' (sesuai filter)' : ''}`}
                     </Button>
                   )}
                   <Button
@@ -671,7 +723,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
               columns={columns}
               data={logs}
               filterPlaceholder="Filter by employee or biometric ID..."
-              enableRowSelection={activeTab === 'failed'}
+              enableRowSelection={canResendTab}
               rowSelection={rowSelection}
               onRowSelectionChange={setRowSelection}
               getRowId={(log) => log.id}

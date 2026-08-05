@@ -42,6 +42,18 @@ class AttendanceLog extends Model
     public const STATUSES = ['pending', 'sent', 'failed', 'duplicate'];
 
     /**
+     * Status yang boleh dikirim ULANG ke Talenta lewat aksi kirim ulang.
+     *
+     * 'failed' jelas: percobaan sebelumnya memang gagal. 'sent' sengaja ikut,
+     * karena "sudah terkirim" hanya berarti Talenta menerima request kita saat
+     * itu — kalau datanya hilang/berubah di sisi Talenta, satu-satunya jalan
+     * memperbaiki adalah mengirimnya lagi. 'pending' tidak di sini (belum pernah
+     * dikirim, itu urusan "Kirim Semua Pending") dan 'duplicate' juga tidak
+     * (memang sengaja tidak dikirim).
+     */
+    public const RESENDABLE_STATUSES = ['failed', 'sent'];
+
+    /**
      * Baca filter panel dari request (query string di halaman, body JSON di
      * request kirim ulang) jadi bentuk baku yang dimengerti applyFilters().
      *

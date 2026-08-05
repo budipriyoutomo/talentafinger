@@ -63,12 +63,17 @@ class ResendFailedAttendanceTest extends TestCase
 
     private function failedLogs(Machine $machine, int $count): void
     {
+        $this->logs($machine, $count, 'failed');
+    }
+
+    private function logs(Machine $machine, int $count, string $status): void
+    {
         foreach (range(1, $count) as $i) {
             AttendanceLog::create([
                 'machine_id' => $machine->id,
                 'biometric_id_lokal' => '1001',
                 'timestamp' => now(),
-                'status_sync' => 'failed',
+                'status_sync' => $status,
             ]);
         }
     }
@@ -80,7 +85,7 @@ class ResendFailedAttendanceTest extends TestCase
         $this->failedLogs($this->mesinSate, 5);
 
         $response = $this->actingAs($this->admin)
-            ->postJson('/api/attendance-logs/send-failed', ['outlet_id' => $this->kopi->id]);
+            ->postJson('/api/attendance-logs/resend', ['outlet_id' => $this->kopi->id]);
 
         // Inti perbaikan: 3 (outlet terfilter), bukan 8 (seluruh database).
         $response->assertStatus(202)->assertJson(['ok' => true, 'total' => 3]);
@@ -97,7 +102,7 @@ class ResendFailedAttendanceTest extends TestCase
         $this->failedLogs($this->mesinSate, 5);
 
         $this->actingAs($this->admin)
-            ->postJson('/api/attendance-logs/send-failed', [])
+            ->postJson('/api/attendance-logs/resend', [])
             ->assertStatus(202)
             ->assertJson(['total' => 8]);
     }
@@ -109,7 +114,7 @@ class ResendFailedAttendanceTest extends TestCase
         $ids = AttendanceLog::limit(2)->pluck('id')->all();
 
         $this->actingAs($this->admin)
-            ->postJson('/api/attendance-logs/send-failed', ['ids' => $ids])
+            ->postJson('/api/attendance-logs/resend', ['ids' => $ids])
             ->assertStatus(202)
             ->assertJson(['total' => 2]);
     }
@@ -119,12 +124,85 @@ class ResendFailedAttendanceTest extends TestCase
         Queue::fake();
 
         $this->actingAs($this->admin)
-            ->postJson('/api/attendance-logs/send-failed', [])
+            ->postJson('/api/attendance-logs/resend', [])
             ->assertStatus(422)
             ->assertJson(['ok' => false]);
 
         $this->assertSame(0, AttendanceResendJob::count());
         Queue::assertNothingPushed();
+    }
+
+    // ===== Kirim ulang data yang SUDAH terkirim (status=sent) =====
+
+    public function test_kirim_ulang_status_sent_hanya_menghitung_log_terkirim(): void
+    {
+        Queue::fake();
+        $this->logs($this->mesinKopi, 4, 'sent');
+        $this->failedLogs($this->mesinKopi, 3);
+        $this->logs($this->mesinKopi, 2, 'pending');
+
+        $this->actingAs($this->admin)
+            ->postJson('/api/attendance-logs/resend', ['status' => 'sent'])
+            ->assertStatus(202)
+            ->assertJson(['ok' => true, 'total' => 4]);
+
+        // Status tujuan ikut tersimpan di job, supaya worker mengerjakan kumpulan
+        // yang sama dengan yang dihitung di sini.
+        $this->assertSame('sent', AttendanceResendJob::first()->filters['status']);
+    }
+
+    public function test_kirim_ulang_status_pending_atau_ngawur_ditolak(): void
+    {
+        Queue::fake();
+        $this->logs($this->mesinKopi, 2, 'pending');
+
+        foreach (['pending', 'duplicate', 'ngawur'] as $status) {
+            $this->actingAs($this->admin)
+                ->postJson('/api/attendance-logs/resend', ['status' => $status])
+                ->assertStatus(422);
+        }
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_job_mengirim_ulang_log_yang_sudah_sent(): void
+    {
+        Http::fake(['*' => Http::response(json_encode(['success' => true]), 200)]);
+        $this->logs($this->mesinKopi, 3, 'sent');
+        $this->failedLogs($this->mesinKopi, 2);
+
+        $job = AttendanceResendJob::create([
+            'user_id' => $this->admin->id,
+            'filters' => ['status' => 'sent'],
+            'status' => 'queued', 'progress_total' => 3, 'progress_done' => 0,
+        ]);
+
+        (new ResendFailedAttendance($job->id))->handle(app(AttendanceSyncService::class));
+
+        $this->assertSame('done', $job->fresh()->status);
+        $this->assertSame(3, $job->fresh()->summary['sent']);
+        // Log gagal tak ikut terbawa: yang diminta hanya yang berstatus sent.
+        $this->assertSame(2, AttendanceLog::where('status_sync', 'failed')->count());
+        Http::assertSentCount(1);
+    }
+
+    public function test_kirim_satu_log_sent_butuh_force(): void
+    {
+        Http::fake(['*' => Http::response(json_encode(['success' => true]), 200)]);
+        $this->logs($this->mesinKopi, 1, 'sent');
+        $log = AttendanceLog::first();
+
+        // Tanpa force, tombol "Kirim" biasa tak boleh mengirim ulang diam-diam.
+        $this->actingAs($this->admin)
+            ->postJson("/api/attendance-logs/{$log->id}/send")
+            ->assertStatus(422);
+        Http::assertNothingSent();
+
+        $this->actingAs($this->admin)
+            ->postJson("/api/attendance-logs/{$log->id}/send", ['force' => true])
+            ->assertStatus(200)
+            ->assertJson(['success' => true]);
+        Http::assertSentCount(1);
     }
 
     public function test_job_hanya_mengubah_log_yang_cocok_filter(): void
@@ -153,7 +231,7 @@ class ResendFailedAttendanceTest extends TestCase
         $this->failedLogs($this->mesinKopi, AttendanceSyncService::CHUNK_SIZE + 10);
 
         $progress = [];
-        $result = app(AttendanceSyncService::class)->resendFailedChunked(
+        $result = app(AttendanceSyncService::class)->resendChunked(
             filters: [], ids: [], user: $this->admin,
             onProgress: function (int $done) use (&$progress) { $progress[] = $done; },
         );

@@ -261,7 +261,7 @@ class ScopedAccessTest extends TestCase
         $this->actingAs($this->user('viewer', $this->kopi));
 
         $this->postJson('/api/attendance-logs/send-pending')->assertStatus(403);
-        $this->postJson('/api/attendance-logs/send-failed')->assertStatus(403);
+        $this->postJson('/api/attendance-logs/resend')->assertStatus(403);
     }
 
     // ===== Halaman Inertia ikut disaring =====

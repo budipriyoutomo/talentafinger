@@ -73,7 +73,8 @@ Route::delete('/outlets/{id}', [OrgController::class, 'destroyOutlet']);
 // ===== Log absensi =====
 Route::get('/attendance-logs', [AttendanceController::class, 'index']);
 Route::post('/attendance-logs/send-pending', [AttendanceController::class, 'sendPending']);
-Route::post('/attendance-logs/send-failed', [AttendanceController::class, 'sendFailed']);
+// Kirim ulang: log 'failed' MAUPUN log yang sudah 'sent' (body: status=failed|sent).
+Route::post('/attendance-logs/resend', [AttendanceController::class, 'resend']);
 Route::get('/attendance-logs/resend-jobs/{id}', [AttendanceController::class, 'resendJob']);
 Route::post('/attendance-logs/{id}/send', [AttendanceController::class, 'send']);
 

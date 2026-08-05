@@ -46,6 +46,11 @@ class AttendanceController extends Controller
 
     /**
      * Kirim satu attendance log ke Talenta (dipicu via tombol — pengiriman MANUAL).
+     *
+     * Log yang sudah 'sent' hanya ikut terkirim bila pemanggil menyertakan
+     * force=true — itulah tombol "Kirim Ulang" di baris tersebut. Tanpa flag itu
+     * permintaan ditolak, supaya klik ganda pada tombol "Kirim" biasa tidak
+     * pernah tanpa sengaja mengirim data yang sama dua kali.
      */
     public function send(Request $request, string $id)
     {
@@ -57,8 +62,11 @@ class AttendanceController extends Controller
 
         $this->authorize('send', $log);
 
-        if ($log->status_sync === 'sent') {
-            return response()->json(['success' => false, 'message' => 'Data sudah pernah terkirim'], 422);
+        if ($log->status_sync === 'sent' && ! $request->boolean('force')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Data sudah pernah terkirim. Pakai tombol "Kirim Ulang" bila memang ingin mengirimnya lagi.',
+            ], 422);
         }
 
         $result = $this->sync->sendLogs(collect([$log]));
@@ -83,43 +91,56 @@ class AttendanceController extends Controller
     }
 
     /**
-     * Kirim ulang log berstatus 'failed' — MANUAL, dikerjakan di BACKGROUND.
+     * Kirim ulang log ke Talenta — MANUAL, dikerjakan di BACKGROUND.
      *
-     * Tanpa 'ids' = semua log gagal YANG COCOK FILTER AKTIF; dengan 'ids' = hanya
-     * baris yang dicentang user. Filter ikut dikirim dari halaman dan dibaca lewat
-     * AttendanceLog::filtersFromRequest(), fungsi yang sama yang dipakai tabelnya —
-     * jadi "semua gagal" berarti persis yang tampil di layar setelah difilter,
-     * bukan seluruh isi database seperti perilaku lama.
+     * 'status' menentukan kumpulan yang dikirim ulang: 'failed' (bawaan) atau
+     * 'sent' untuk data yang SUDAH pernah terkirim tapi perlu dikirim lagi,
+     * mis. karena hilang/berubah di sisi Talenta. Status lain ditolak validasi —
+     * lihat AttendanceLog::RESENDABLE_STATUSES.
+     *
+     * Tanpa 'ids' = semua log berstatus itu YANG COCOK FILTER AKTIF; dengan 'ids'
+     * = hanya baris yang dicentang user. Filter ikut dikirim dari halaman dan
+     * dibaca lewat AttendanceLog::filtersFromRequest(), fungsi yang sama yang
+     * dipakai tabelnya — jadi "semua gagal" berarti persis yang tampil di layar
+     * setelah difilter, bukan seluruh isi database seperti perilaku lama.
      *
      * Mengembalikan 202 + job_id; progresnya dipolling lewat resendJob().
      */
-    public function sendFailed(Request $request)
+    public function resend(Request $request)
     {
         $this->authorizePermission($request, 'attendance.send');
 
         $data = $request->validate([
             'ids' => ['sometimes', 'array'],
             'ids.*' => ['uuid'],
+            'status' => ['sometimes', 'in:' . implode(',', AttendanceLog::RESENDABLE_STATUSES)],
         ]);
 
         $user = $request->user();
         $ids = $data['ids'] ?? [];
+        $target = $data['status'] ?? 'failed';
+
+        // Status tujuan ditulis ke dalam filters, bukan disimpan terpisah: dengan
+        // begitu "yang difilter tabel" dan "yang dikirim ulang" tetap satu nilai,
+        // dan job background bisa membacanya kembali tanpa kolom tambahan.
         $filters = AttendanceLog::filtersFromRequest($request);
+        $filters['status'] = $target;
 
         // Hitung dulu supaya user tahu berapa yang akan diproses, dan supaya
         // "tidak ada apa-apa untuk dikirim" tak perlu lewat queue sama sekali.
         // ids di luar scope tersaring diam-diam oleh visibleTo(), jadi menebak id
         // orang lain tak mengirim apa pun.
         $total = AttendanceLog::visibleTo($user)
-            ->applyFilters($filters + ['status' => 'failed'])
-            ->where('status_sync', 'failed')
+            ->applyFilters($filters)
             ->when($ids, fn ($q) => $q->whereIn('id', $ids))
             ->count();
+
+        $label = $target === 'sent' ? 'terkirim' : 'gagal';
 
         if ($total === 0) {
             return response()->json([
                 'ok' => false,
-                'message' => 'Tidak ada data gagal untuk dikirim ulang.',
+                'message' => "Tidak ada data {$label} untuk dikirim ulang.",
             ], 422);
         }
 
@@ -138,7 +159,7 @@ class AttendanceController extends Controller
             'ok' => true,
             'job_id' => $job->id,
             'total' => $total,
-            'message' => "Kirim ulang {$total} log gagal diproses di background.",
+            'message' => "Kirim ulang {$total} log {$label} diproses di background.",
         ], 202);
     }
 

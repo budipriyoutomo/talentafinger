@@ -10,7 +10,13 @@ use Illuminate\Foundation\Queue\Queueable;
 use Throwable;
 
 /**
- * Kirim ulang log absensi berstatus 'failed' di background.
+ * Kirim ulang log absensi di background — baik yang berstatus 'failed' maupun
+ * yang sudah 'sent' (lihat AttendanceLog::RESENDABLE_STATUSES). Status tujuan
+ * dibawa di dalam $job->filters['status'], jadi tak perlu kolom baru dan job
+ * memakai definisi filter yang sama dengan tabelnya. Nama kelas sengaja
+ * dipertahankan meski cakupannya melebar: nama kelas job ikut tersimpan di
+ * payload antrean, jadi menggantinya akan mematikan job yang sedang mengantre
+ * saat deploy.
  *
  * Dulu ini dikerjakan langsung di dalam request web: semua log ditarik ke memori,
  * dijadikan satu CSV, dikirim dalam satu panggilan HTTP. Dengan log produksi yang
@@ -50,13 +56,16 @@ class ResendFailedAttendance implements ShouldQueue
         // jadi celah yang mengirim log di luar wewenang orang yang menekan tombol.
         $user = $job->user_id ? User::find($job->user_id) : null;
 
-        $result = $sync->resendFailedChunked(
-            filters: $job->filters ?? [],
+        $filters = $job->filters ?? [];
+
+        $result = $sync->resendChunked(
+            filters: $filters,
             ids: $job->selected_ids ?? [],
             user: $user,
             onProgress: function (int $done, int $total) use ($job) {
                 $job->update(['progress_done' => $done, 'progress_total' => $total]);
             },
+            status: $filters['status'] ?? 'failed',
         );
 
         $job->update([
