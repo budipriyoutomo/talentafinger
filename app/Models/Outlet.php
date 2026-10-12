@@ -15,11 +15,21 @@ class Outlet extends Model
         'brand_id',
         'name',
         'is_active',
+        // Titik pusat outlet untuk geofence absen manual pakai foto.
+        'latitude',
+        'longitude',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'latitude' => 'float',
+        'longitude' => 'float',
     ];
+
+    public function hasCoordinates(): bool
+    {
+        return $this->latitude !== null && $this->longitude !== null;
+    }
 
     /** Outlet hilang -> penugasan user ke outlet itu ikut dibuang. */
     protected static function booted(): void

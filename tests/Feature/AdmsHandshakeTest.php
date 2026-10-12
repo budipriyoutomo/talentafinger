@@ -24,7 +24,8 @@ class AdmsHandshakeTest extends TestCase
         $response->assertStatus(200);
         $response->assertSee('TEST001');
         $this->assertNotNull($machine->fresh()->last_seen_at);
-        $this->assertEquals('online', $machine->fresh()->status);
+        // Status dihitung live dari last_seen_at, bukan dari kolom `status`.
+        $this->assertTrue($machine->fresh()->isOnline());
     }
 
     public function test_invalid_sn_returns_unauthorized(): void

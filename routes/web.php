@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AdmsController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ManualAttendanceController;
 
 // ADMS iClock endpoints — dipanggil mesin fingerprint, harus tetap PUBLIK.
 Route::get('/iclock/cdata', [AdmsController::class, 'handshake']);
@@ -26,6 +27,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/employee-management', [DashboardController::class, 'employeeManagement']);
     Route::get('/fingerprints', [DashboardController::class, 'fingerprints']);
     Route::get('/settings', [DashboardController::class, 'settings']);
+
+    // Halaman absen foto untuk akun karyawan (role employee).
+    Route::get('/absen', [ManualAttendanceController::class, 'show']);
 });
 
 Route::redirect('/', '/dashboard');

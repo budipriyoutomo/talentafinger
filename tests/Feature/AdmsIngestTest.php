@@ -46,8 +46,10 @@ class AdmsIngestTest extends TestCase
         ]);
     }
 
-    public function test_duplicate_payload_marked_as_duplicate(): void
+    public function test_kiriman_ulang_diabaikan_dan_log_asli_tetap_pending(): void
     {
+        // Regresi: dulu kiriman ulang mengubah log asli 'pending' jadi 'duplicate',
+        // sehingga absensinya tak pernah terkirim ke Talenta.
         $this->machine();
         $body = "1001\t2026-06-15 08:03:22\t0\t1\t0";
 
@@ -55,7 +57,21 @@ class AdmsIngestTest extends TestCase
         $response = $this->ingest('TEST001', $body);
 
         $response->assertStatus(200);
-        $this->assertGreaterThan(0, AttendanceLog::where('status_sync', 'duplicate')->count());
+        $this->assertSame(1, AttendanceLog::count());
+        $this->assertSame('pending', AttendanceLog::first()->status_sync);
+    }
+
+    public function test_kiriman_ulang_tidak_mengubah_log_yang_sudah_terkirim(): void
+    {
+        $this->machine();
+        $body = "1001\t2026-06-15 08:03:22\t0\t1\t0";
+
+        $this->ingest('TEST001', $body);
+        AttendanceLog::query()->update(['status_sync' => 'sent']);
+        $this->ingest('TEST001', $body);
+
+        $this->assertSame(1, AttendanceLog::count());
+        $this->assertSame('sent', AttendanceLog::first()->status_sync);
     }
 
     public function test_malformed_payload_returns_ok_without_log(): void
@@ -134,10 +150,49 @@ class AdmsIngestTest extends TestCase
             'status' => 'sent',
         ]);
 
-        $response = $this->call('POST', '/iclock/devicecmd', [], [], [], ['CONTENT_TYPE' => 'text/plain'], "ID={$cmd->id}&Return=0&CMD=OPTIONS");
+        $response = $this->call('POST', '/iclock/devicecmd?SN=TEST001', [], [], [], ['CONTENT_TYPE' => 'text/plain'], "ID={$cmd->id}&Return=0&CMD=OPTIONS");
 
         $response->assertStatus(200);
         $this->assertSame('done', $cmd->fresh()->status);
         $this->assertNotNull($cmd->fresh()->done_at);
+    }
+
+    public function test_devicecmd_tidak_bisa_menandai_perintah_mesin_lain(): void
+    {
+        $machine = $this->machine();
+        Machine::create([
+            'serial_number' => 'OTHER001',
+            'name' => 'Mesin Lain',
+            'location' => 'Lain',
+            'is_active' => true,
+            'status' => 'offline',
+        ]);
+        $cmd = DeviceCommand::create([
+            'machine_id' => $machine->id,
+            'command' => 'SET OPTIONS DateTime=...',
+            'status' => 'sent',
+        ]);
+
+        $body = "ID={$cmd->id}&Return=0&CMD=OPTIONS";
+        $this->call('POST', '/iclock/devicecmd?SN=OTHER001', [], [], [], ['CONTENT_TYPE' => 'text/plain'], $body)->assertStatus(200);
+        $this->call('POST', '/iclock/devicecmd', [], [], [], ['CONTENT_TYPE' => 'text/plain'], $body)->assertStatus(200);
+
+        $this->assertSame('sent', $cmd->fresh()->status);
+        $this->assertNull($cmd->fresh()->done_at);
+    }
+
+    public function test_unique_index_menolak_log_kembar(): void
+    {
+        $machine = $this->machine();
+        $data = [
+            'machine_id' => $machine->id,
+            'biometric_id_lokal' => '1001',
+            'timestamp' => '2026-06-15 08:03:22',
+            'status_sync' => 'pending',
+        ];
+        AttendanceLog::create($data);
+
+        $this->expectException(\Illuminate\Database\UniqueConstraintViolationException::class);
+        AttendanceLog::create($data);
     }
 }

@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
-#[Fillable(['name', 'email', 'password', 'role'])]
+#[Fillable(['name', 'email', 'password', 'role', 'employee_id'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -18,7 +18,7 @@ class User extends Authenticatable
     use HasFactory, Notifiable;
 
     /** Peran yang dikenal. Urutan = dari hak paling tinggi ke rendah. */
-    public const ROLES = ['admin', 'manager', 'operator', 'viewer'];
+    public const ROLES = ['admin', 'manager', 'operator', 'viewer', 'employee'];
 
     /**
      * Samakan dengan default kolom `role` di DB. Tanpa ini, user yang dibuat
@@ -39,6 +39,18 @@ class User extends Authenticatable
     public function isAdmin(): bool
     {
         return $this->role === 'admin';
+    }
+
+    /** Akun karyawan (absen foto), bukan pengguna admin panel. */
+    public function isEmployee(): bool
+    {
+        return $this->role === 'employee';
+    }
+
+    /** Data karyawan yang ditautkan ke akun ber-role `employee`. */
+    public function employee()
+    {
+        return $this->belongsTo(Employee::class);
     }
 
     /** Penugasan user ke Company / Brand / Outlet (lihat model UserScope). */

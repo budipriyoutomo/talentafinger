@@ -27,6 +27,7 @@ class UserController extends Controller
             'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:8',
             'role' => ['required', Rule::in(User::ROLES)],
+            ...$this->employeeRules(),
             ...$this->scopeRules(),
         ]);
 
@@ -35,6 +36,7 @@ class UserController extends Controller
             'email' => $data['email'],
             'password' => Hash::make($data['password']),
             'role' => $data['role'],
+            'employee_id' => $data['role'] === 'employee' ? $data['employee_id'] : null,
         ]);
 
         $this->syncScopes($user, $data);
@@ -52,6 +54,7 @@ class UserController extends Controller
             // Password opsional saat edit: kosong = jangan ubah.
             'password' => 'nullable|string|min:8',
             'role' => ['required', Rule::in(User::ROLES)],
+            ...$this->employeeRules($id),
             ...$this->scopeRules(),
         ]);
 
@@ -65,6 +68,8 @@ class UserController extends Controller
         $user->name = $data['name'];
         $user->email = $data['email'];
         $user->role = $data['role'];
+        // Tautan karyawan hanya bermakna untuk role employee.
+        $user->employee_id = $data['role'] === 'employee' ? $data['employee_id'] : null;
         if (filled($data['password'] ?? null)) {
             $user->password = Hash::make($data['password']);
         }
@@ -93,6 +98,23 @@ class UserController extends Controller
         return response()->json(['success' => true]);
     }
 
+    /**
+     * Akun ber-role `employee` wajib ditautkan ke tepat satu karyawan, dan satu
+     * karyawan hanya boleh punya satu akun.
+     */
+    private function employeeRules(?string $ignoreUserId = null): array
+    {
+        return [
+            'employee_id' => [
+                'nullable',
+                'required_if:role,employee',
+                'uuid',
+                'exists:employees,id',
+                Rule::unique('users', 'employee_id')->ignore($ignoreUserId),
+            ],
+        ];
+    }
+
     /** Scope dikirim sebagai tiga daftar terpisah supaya bisa divalidasi `exists`. */
     private function scopeRules(): array
     {
@@ -114,8 +136,9 @@ class UserController extends Controller
             return;
         }
 
-        // Admin tak pernah dibatasi outlet; simpan barisnya cuma menyesatkan.
-        if ($user->isAdmin()) {
+        // Admin tak pernah dibatasi outlet; akun karyawan tak melihat data outlet
+        // mana pun. Menyimpan barisnya untuk keduanya cuma menyesatkan.
+        if ($user->isAdmin() || $user->isEmployee()) {
             $user->dataScopes()->delete();
 
             return;
@@ -139,7 +162,7 @@ class UserController extends Controller
         $byType = $user->dataScopes->groupBy('scope_type');
 
         return [
-            ...$user->only(['id', 'name', 'email', 'role', 'created_at']),
+            ...$user->only(['id', 'name', 'email', 'role', 'employee_id', 'created_at']),
             'company_ids' => $byType->get('company')?->pluck('scope_id')->all() ?? [],
             'brand_ids' => $byType->get('brand')?->pluck('scope_id')->all() ?? [],
             'outlet_ids' => $byType->get('outlet')?->pluck('scope_id')->all() ?? [],

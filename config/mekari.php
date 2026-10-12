@@ -18,4 +18,8 @@ return [
 
     // FR-09: max requests per minute to Mekari API (avoid HTTP 429)
     'rate_limit' => (int) env('MEKARI_RATE_LIMIT', 60),
+
+    // Umur maksimal (hari) arsip CSV + response di storage/app/talenta sebelum
+    // dihapus command terjadwal talenta:prune-files. 0 = simpan selamanya.
+    'file_retention_days' => (int) env('MEKARI_FILE_RETENTION_DAYS', 90),
 ];

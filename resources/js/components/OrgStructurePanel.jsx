@@ -5,7 +5,7 @@ import { confirmToast } from '@/lib/confirm'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Building2, Tag, Store, Plus, Pencil, Trash2 } from 'lucide-react'
+import { Building2, Tag, Store, Plus, Pencil, Trash2, MapPin } from 'lucide-react'
 
 function csrf() {
   return document.querySelector('meta[name="csrf-token"]').content
@@ -93,6 +93,33 @@ export default function OrgStructurePanel({ companies = [] }) {
     if (!name || name === o.name) return
     if (await api(`/api/outlets/${o.id}`, 'PUT', { brand_id: brand.id, name })) reload()
   }
+  // Titik koordinat outlet untuk geofence absen foto. Format sama dengan yang
+  // disalin dari Google Maps (klik kanan titik -> salin "lat, lng").
+  const setOutletLocation = async (brand, o) => {
+    const current = o.latitude != null && o.longitude != null ? `${o.latitude}, ${o.longitude}` : ''
+    const input = prompt(
+      `Koordinat outlet "${o.name}" untuk absen foto.\n`
+        + 'Tempel dari Google Maps dengan format "lat, lng" (mis. -6.2001, 106.8166).\n'
+        + 'Kosongkan untuk menghapus titik.',
+      current,
+    )
+    if (input === null) return
+    const trimmed = input.trim()
+    let latitude = null
+    let longitude = null
+    if (trimmed) {
+      const parts = trimmed.split(/[,\s]+/).filter(Boolean).map(Number)
+      if (parts.length !== 2 || parts.some((n) => Number.isNaN(n))) {
+        toast.error('Format koordinat salah. Contoh: -6.2001, 106.8166')
+        return
+      }
+      ;[latitude, longitude] = parts
+    }
+    if (await api(`/api/outlets/${o.id}`, 'PUT', { brand_id: brand.id, name: o.name, latitude, longitude })) {
+      toast.success(trimmed ? 'Titik koordinat outlet disimpan.' : 'Titik koordinat outlet dihapus.')
+      reload()
+    }
+  }
   const deleteOutlet = (o) => {
     confirmToast({
       message: `Hapus outlet "${o.name}"?`,
@@ -177,8 +204,31 @@ export default function OrgStructurePanel({ companies = [] }) {
                         <span className="flex items-center gap-2">
                           <Store className="h-3.5 w-3.5 text-slate-400" />
                           {outlet.name}
+                          {outlet.latitude != null && outlet.longitude != null ? (
+                            <a
+                              href={`https://www.google.com/maps?q=${outlet.latitude},${outlet.longitude}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="Titik koordinat untuk absen foto — lihat di peta"
+                            >
+                              <Badge variant="success" className="gap-1"><MapPin className="h-3 w-3" />titik</Badge>
+                            </a>
+                          ) : (
+                            <span className="text-xs text-slate-400" title="Belum ada titik koordinat; absen foto tak bisa dipakai di outlet ini">
+                              tanpa titik
+                            </span>
+                          )}
                         </span>
                         <div className="flex gap-1">
+                          <Button
+                            onClick={() => setOutletLocation(brand, outlet)}
+                            variant="ghost"
+                            size="sm"
+                            title="Atur titik koordinat (absen foto)"
+                            aria-label={`Atur titik koordinat ${outlet.name}`}
+                          >
+                            <MapPin className="h-3 w-3" />
+                          </Button>
                           <Button onClick={() => editOutlet(brand, outlet)} variant="ghost" size="sm">
                             <Pencil className="h-3 w-3" />
                           </Button>

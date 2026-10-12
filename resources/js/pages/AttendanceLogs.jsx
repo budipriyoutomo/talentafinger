@@ -11,7 +11,8 @@ import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { usePermissions } from '@/lib/permissions'
-import { Download, Send, Loader2, X, ChevronLeft, ChevronRight, RefreshCw, ListChecks, AlertTriangle, CheckCircle2, SlidersHorizontal } from 'lucide-react'
+import ManualReviewDialog, { STATUS_LABEL, STATUS_VARIANT } from '@/components/ManualReviewDialog'
+import { Download, Send, Loader2, X, ChevronLeft, ChevronRight, RefreshCw, ListChecks, AlertTriangle, CheckCircle2, SlidersHorizontal, Camera, Cpu } from 'lucide-react'
 
 // Pilihan jeda auto-refresh (detik).
 const REFRESH_INTERVAL = 15
@@ -23,8 +24,19 @@ const PER_PAGE_OPTIONS = [10, 50, 100, 250, 500]
 // Tab = preset status_sync yang dikirim ke server ('' = semua).
 const TABS = [
   { key: '', label: 'Semua Log', icon: ListChecks },
+  { key: 'pending_review', label: 'Perlu Review', icon: Camera },
   { key: 'failed', label: 'Gagal', icon: AlertTriangle },
   { key: 'sent', label: 'Terkirim', icon: CheckCircle2 },
+]
+
+// Status yang TIDAK boleh dikirim ke Talenta (cocok AttendanceLog::UNSENDABLE_STATUSES).
+const UNSENDABLE = ['pending_review', 'rejected', 'duplicate']
+
+// Filter sumber log (cocok AttendanceLog::SOURCES).
+const SOURCE_OPTIONS = [
+  { value: '', label: 'Semua Sumber' },
+  { value: 'machine', label: 'Mesin' },
+  { value: 'manual_photo', label: 'Foto Manual' },
 ]
 
 // Tab yang barisnya boleh dikirim ULANG (centang + tombol kirim ulang massal).
@@ -48,6 +60,9 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
   // Tanpa attendance.send, semua tombol kirim disembunyikan (viewer = baca saja).
   const { can } = usePermissions()
   const canSend = can('attendance.send')
+  const canReview = can('attendance.review')
+  // Log absen foto yang sedang dibuka di dialog detail/review.
+  const [reviewLog, setReviewLog] = useState(null)
 
   // Tab aktif = status yang sedang ditampilkan; juga menentukan baris mana yang
   // bisa dicentang dan status apa yang dikirim ulang.
@@ -65,7 +80,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
   const [rowSelection, setRowSelection] = useState({})
   // Panel filter disembunyikan default; otomatis terbuka bila ada filter aktif dari URL.
   const [showFilters, setShowFilters] = useState(
-    () => !!(filters.machine_id || filters.brand_id || filters.outlet_id || filters.date_from || filters.date_to)
+    () => !!(filters.machine_id || filters.brand_id || filters.outlet_id || filters.source || filters.date_from || filters.date_to)
   )
 
   // Refresh tabel berkala tanpa kehilangan filter/scroll. Hanya muat ulang
@@ -149,6 +164,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
       machine_id: filters.machine_id || '',
       brand_id: filters.brand_id || '',
       outlet_id: filters.outlet_id || '',
+      source: filters.source || '',
       date_from: filters.date_from || '',
       date_to: filters.date_to || '',
       per_page: perPage,
@@ -177,6 +193,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         machine_id: filters.machine_id || '',
         brand_id: filters.brand_id || '',
         outlet_id: filters.outlet_id || '',
+        source: filters.source || '',
         date_from: filters.date_from || '',
         date_to: filters.date_to || '',
         per_page: perPage,
@@ -214,7 +231,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
 
   // "Filter" di sini = filter selain tab status (mesin/brand/outlet/tanggal).
   const hasFilters =
-    filters.machine_id || filters.brand_id || filters.outlet_id || filters.date_from || filters.date_to
+    filters.machine_id || filters.brand_id || filters.outlet_id || filters.source || filters.date_from || filters.date_to
 
   const csrf = () => document.querySelector('meta[name="csrf-token"]').content
 
@@ -327,6 +344,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
           machine_id: filters.machine_id || '',
           brand_id: filters.brand_id || '',
           outlet_id: filters.outlet_id || '',
+          source: filters.source || '',
           date_from: filters.date_from || '',
           date_to: filters.date_to || '',
         }),
@@ -384,18 +402,31 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
       },
       {
         accessorKey: 'machine_id',
-        header: 'Machine',
+        header: 'Sumber',
         cell: ({ row }) => {
-          const machineId = row.getValue('machine_id')
-          const machine = machines.find(m => m.id === machineId)
-          return <div className="text-sm">{machine?.name || 'Unknown'}</div>
+          const log = row.original
+          if (log.source === 'manual_photo') {
+            return (
+              <div className="flex items-center gap-1.5 text-sm">
+                <Camera className="h-3.5 w-3.5 shrink-0 text-indigo-500" />
+                <span>Foto · {log.manual?.outlet_name || '-'}</span>
+              </div>
+            )
+          }
+          const machine = machines.find(m => m.id === log.machine_id)
+          return (
+            <div className="flex items-center gap-1.5 text-sm">
+              <Cpu className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+              <span>{machine?.name || 'Unknown'}</span>
+            </div>
+          )
         },
       },
       {
         accessorKey: 'biometric_id_lokal',
         header: 'Biometric ID',
         cell: ({ row }) => (
-          <div className="font-mono text-sm">{row.getValue('biometric_id_lokal')}</div>
+          <div className="font-mono text-sm">{row.getValue('biometric_id_lokal') || '-'}</div>
         ),
       },
       {
@@ -408,13 +439,9 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         header: 'Status',
         cell: ({ row }) => {
           const status = row.getValue('status_sync')
-          const variants = {
-            pending: 'warning',
-            sent: 'success',
-            failed: 'destructive',
-            duplicate: 'info',
-          }
-          return <Badge variant={variants[status] || 'info'}>{status}</Badge>
+          return (
+            <Badge variant={STATUS_VARIANT[status] || 'info'}>{STATUS_LABEL[status] || status}</Badge>
+          )
         },
       },
       {
@@ -438,13 +465,30 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         cell: ({ row }) => {
           const log = row.original
           const status = log.status_sync
-          if (status === 'duplicate' || !canSend) {
-            return <span className="text-xs text-slate-400">-</span>
+          const isManual = log.source === 'manual_photo'
+          const needsReview = status === 'pending_review' && canReview
+          // Absen foto: selalu bisa dibuka (foto + lokasi); jadi tombol Review
+          // selama masih menunggu persetujuan.
+          const photoButton = isManual && (
+            <Button
+              size="sm"
+              variant={needsReview ? 'default' : 'outline'}
+              className="gap-1"
+              onClick={() => setReviewLog({ ...log, timestamp_label: formatTimestamp(log.timestamp) })}
+            >
+              <Camera className="h-3 w-3" />
+              {needsReview ? 'Review' : 'Foto'}
+            </Button>
+          )
+          if (UNSENDABLE.includes(status) || !canSend) {
+            return photoButton || <span className="text-xs text-slate-400">-</span>
           }
           // Sudah terkirim = tetap bisa dikirim ulang, tapi tombolnya dibedakan
           // (outline + konfirmasi) supaya tak tertukar dengan kirim biasa.
           const isResend = status === 'sent'
           return (
+            <div className="flex gap-1">
+            {photoButton}
             <Button
               size="sm"
               variant={isResend ? 'outline' : 'default'}
@@ -462,19 +506,22 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
               )}
               {isResend ? 'Kirim Ulang' : 'Kirim'}
             </Button>
+            </div>
           )
         },
       },
     ],
-    [machines, sendingId, activeTab, canResendTab, canSend]
+    [machines, sendingId, activeTab, canResendTab, canSend, canReview]
   )
 
   const handleExport = () => {
     const csv = [
-      ['Timestamp', 'Machine', 'Biometric ID', 'Employee', 'Status', 'Error'],
+      ['Timestamp', 'Sumber', 'Biometric ID', 'Employee', 'Status', 'Error'],
       ...logs.map(log => [
         formatTimestamp(log.timestamp),
-        machines.find(m => m.id === log.machine_id)?.name || 'Unknown',
+        log.source === 'manual_photo'
+          ? 'Foto Manual - ' + (log.manual?.outlet_name || '-')
+          : machines.find(m => m.id === log.machine_id)?.name || 'Unknown',
         log.biometric_id_lokal,
         log.employee_name || 'N/A',
         log.status_sync,
@@ -561,14 +608,18 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <CardTitle>
-                    {activeTab === 'failed'
+                    {activeTab === 'pending_review'
+                      ? 'Absen Foto Menunggu Review'
+                      : activeTab === 'failed'
                       ? 'Data Gagal Kirim'
                       : activeTab === 'sent'
                         ? 'Data Sudah Terkirim'
                         : 'Log Viewer'}
                   </CardTitle>
                   <CardDescription>
-                    {activeTab === 'failed'
+                    {activeTab === 'pending_review'
+                      ? 'Absen manual pakai foto yang belum disetujui • tidak dikirim ke Talenta sebelum disetujui'
+                      : activeTab === 'failed'
                       ? 'Semua absensi berstatus failed • centang baris untuk pilih yang dikirim ulang, atau kosongkan centang untuk kirim ulang semua'
                       : activeTab === 'sent'
                         ? 'Absensi yang sudah diterima Talenta • bisa dikirim ULANG bila datanya hilang/berubah di Talenta'
@@ -621,6 +672,19 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
                       <option key={m.id} value={m.id}>
                         {m.name || m.serial_number}
                       </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5 sm:w-40">
+                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                    Sumber
+                  </label>
+                  <Select
+                    value={filters.source || ''}
+                    onChange={(e) => applyFilters({ source: e.target.value })}
+                  >
+                    {SOURCE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
                   </Select>
                 </div>
@@ -767,6 +831,18 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
             </div>
           </CardContent>
         </Card>
+
+        {reviewLog && (
+          <ManualReviewDialog
+            log={reviewLog}
+            canReview={canReview}
+            onClose={() => setReviewLog(null)}
+            onReviewed={() => {
+              setReviewLog(null)
+              router.reload({ only: ['logs', 'pagination'] })
+            }}
+          />
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

@@ -28,6 +28,8 @@ return [
 
         'attendance.view' => 'Lihat log absensi',
         'attendance.send' => 'Kirim / kirim ulang log absensi ke Talenta',
+        'attendance.review' => 'Setujui / tolak absen manual pakai foto',
+        'attendance.manual.create' => 'Absen manual pakai foto + lokasi (akun karyawan)',
 
         'employee.view' => 'Lihat master karyawan',
         'employee.manage' => 'Tambah, ubah, hapus karyawan',
@@ -55,11 +57,13 @@ return [
         'admin' => ['*'],
 
         // Penanggung jawab operasional di outlet-nya: kelola karyawan & sidik
-        // jari, kirim ulang absensi. Tidak boleh mengubah perangkat keras.
+        // jari, kirim ulang absensi, review absen foto. Tidak boleh mengubah
+        // perangkat keras.
         'manager' => [
             'machine.view',
             'attendance.view',
             'attendance.send',
+            'attendance.review',
             'employee.view',
             'employee.manage',
             'fingerprint.view',
@@ -83,6 +87,14 @@ return [
             'attendance.view',
             'employee.view',
             'fingerprint.view',
+        ],
+
+        // Akun milik KARYAWAN (ditautkan ke employees lewat users.employee_id):
+        // hanya boleh absen pakai foto di halaman /absen. Tak punya akses ke
+        // data siapa pun di admin panel. Admin TIDAK otomatis bisa absen foto —
+        // butuh tautan employee, yang hanya dimiliki akun ber-role ini.
+        'employee' => [
+            'attendance.manual.create',
         ],
     ],
 ];

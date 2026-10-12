@@ -6,7 +6,9 @@ use App\Models\Setting;
 use App\Services\AttendanceSyncService;
 use App\Services\MekariTalentaService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Sleep;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -145,6 +147,109 @@ class MekariTalentaServiceTest extends TestCase
         $service->importFingerprint("badgeno;date;checktime\n1001;2026-06-15;08:03:00\n");
 
         Log::shouldNotHaveReceived('warning');
+    }
+
+    public function test_retry_saat_gagal_konek_lalu_berhasil(): void
+    {
+        Storage::fake('local');
+        Sleep::fake();
+        Http::fakeSequence()
+            ->pushFailedConnection('cURL error 7: Failed to connect to api.mekari.com port 443')
+            ->push(['code' => 200], 200);
+
+        $response = (new MekariTalentaService())->importFingerprint("badgeno;date;checktime\n1001;2026-06-15;08:03:00\n");
+
+        $this->assertSame(200, $response->status());
+        Http::assertSentCount(2);
+    }
+
+    public function test_retry_untuk_503_lalu_berhasil(): void
+    {
+        Storage::fake('local');
+        Sleep::fake();
+        Http::fakeSequence()
+            ->push('Service Unavailable', 503)
+            ->push(['code' => 200], 200);
+
+        $response = (new MekariTalentaService())->importFingerprint("badgeno;date;checktime\n1001;2026-06-15;08:03:00\n");
+
+        $this->assertSame(200, $response->status());
+        Http::assertSentCount(2);
+    }
+
+    public function test_tidak_retry_untuk_4xx_validasi(): void
+    {
+        Storage::fake('local');
+        Sleep::fake();
+        Http::fake(['*' => Http::response(['message' => 'input validation error'], 400)]);
+
+        $response = (new MekariTalentaService())->importFingerprint("badgeno;date;checktime\n1001;2026-06-15;08:03:00\n");
+
+        $this->assertSame(400, $response->status());
+        Http::assertSentCount(1);
+    }
+
+    public function test_tidak_retry_saat_timeout_menunggu_jawaban(): void
+    {
+        // Timeout setelah request terkirim: Talenta mungkin sudah memproses CSV-nya,
+        // upload ulang berisiko menggandakan data. Harus langsung gagal.
+        Storage::fake('local');
+        Sleep::fake();
+        Http::fakeSequence()
+            ->pushFailedConnection('cURL error 28: Operation timed out after 120000 milliseconds with 0 bytes received')
+            ->push(['code' => 200], 200);
+
+        try {
+            (new MekariTalentaService())->importFingerprint("badgeno;date;checktime\n1001;2026-06-15;08:03:00\n");
+            $this->fail('ConnectionException seharusnya dilempar');
+        } catch (ConnectionException) {
+            Http::assertSentCount(1);
+        }
+    }
+
+    public function test_menyerah_setelah_3_percobaan(): void
+    {
+        Storage::fake('local');
+        Sleep::fake();
+        Http::fake(['*' => Http::response('Bad Gateway', 502)]);
+
+        $response = (new MekariTalentaService())->importFingerprint("badgeno;date;checktime\n1001;2026-06-15;08:03:00\n");
+
+        $this->assertSame(502, $response->status());
+        Http::assertSentCount(3);
+    }
+
+    public function test_rate_limit_menunggu_saat_kuota_habis(): void
+    {
+        Storage::fake('local');
+        Sleep::fake();
+        config(['mekari.rate_limit' => 1]);
+        Http::fake(['*' => Http::response(['code' => 200], 200)]);
+
+        $service = new MekariTalentaService();
+        $service->importFingerprint("badgeno;date;checktime\n1001;2026-06-15;08:03:00\n");
+        Sleep::assertNeverSlept();
+
+        // Upload kedua di menit yang sama melebihi kuota 1/menit -> harus menunggu.
+        $service->importFingerprint("badgeno;date;checktime\n1001;2026-06-15;08:04:00\n");
+        Sleep::assertSleptTimes(1);
+        Http::assertSentCount(2);
+    }
+
+    public function test_log_request_tidak_memuat_isi_csv(): void
+    {
+        Storage::fake('local');
+        Http::fake(['*' => Http::response(['code' => 200], 200)]);
+        Log::spy();
+
+        (new MekariTalentaService())->importFingerprint("badgeno;date;checktime\nRAHASIA-99;2026-06-15;08:03:00\n");
+
+        Log::shouldHaveReceived('info')
+            ->withArgs(fn ($message, $context) => $message === 'Talenta REQUEST import-fingerprint'
+                && ! array_key_exists('csv', $context)
+                && ! str_contains(json_encode($context), 'RAHASIA-99')
+                && $context['rows'] === 1)
+            ->once();
     }
 
     /**

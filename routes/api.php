@@ -1,13 +1,14 @@
 <?php
 
 use App\Http\Controllers\AttendanceController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\FingerprintController;
 use App\Http\Controllers\MachineController;
+use App\Http\Controllers\ManualAttendanceController;
 use App\Http\Controllers\OrgController;
 use App\Http\Controllers\SettingController;
 use App\Http\Controllers\UserController;
-use App\Models\AttendanceLog;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -78,6 +79,12 @@ Route::post('/attendance-logs/resend', [AttendanceController::class, 'resend']);
 Route::get('/attendance-logs/resend-jobs/{id}', [AttendanceController::class, 'resendJob']);
 Route::post('/attendance-logs/{id}/send', [AttendanceController::class, 'send']);
 
+// ===== Absen manual pakai foto =====
+// Dikirim karyawan (role employee) dari halaman /absen; direview supervisor.
+Route::post('/attendance/manual', [ManualAttendanceController::class, 'store']);
+Route::get('/attendance-logs/{id}/photo', [ManualAttendanceController::class, 'photo']);
+Route::post('/attendance-logs/{id}/review', [ManualAttendanceController::class, 'review']);
+
 // ===== Pengaturan aplikasi =====
 Route::put('/settings', [SettingController::class, 'update']);
 
@@ -90,19 +97,5 @@ Route::middleware('admin')->group(function () {
     Route::delete('/users/{id}', [UserController::class, 'destroy']);
 });
 
-Route::get('/dashboard-stats', function (Illuminate\Http\Request $request) {
-    // Angka di dashboard ikut scope user: manajer outlet Kopi tak boleh melihat
-    // hitungan log outlet lain. visibleTo() disematkan di setiap hitungan.
-    $user = $request->user();
-    $scoped = fn () => AttendanceLog::visibleTo($user);
-
-    return [
-        'logs_today' => $scoped()->whereDate('created_at', today())->count(),
-        'sent_count' => $scoped()->where('status_sync', 'sent')->whereDate('created_at', today())->count(),
-        'failed_count' => $scoped()->where('status_sync', 'failed')->count(),
-        'duplicate_count' => $scoped()->where('status_sync', 'duplicate')->count(),
-        'queue_pending' => $scoped()->where('status_sync', 'pending')->count(),
-        'queue_processing' => 0,
-        'queue_failed' => $scoped()->where('status_sync', 'failed')->count(),
-    ];
-});
+// ===== Dashboard =====
+Route::get('/dashboard-stats', [DashboardController::class, 'stats']);

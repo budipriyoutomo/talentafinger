@@ -18,10 +18,12 @@ class Employee extends Model
         'biometric_id',
         'device_privilege',
         'is_active',
+        'allow_manual_attendance',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'allow_manual_attendance' => 'boolean',
         'device_privilege' => 'integer',
     ];
 

@@ -8,6 +8,7 @@ use App\Models\Machine;
 use App\Models\Setting;
 use App\Services\AttendanceSyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -155,7 +156,8 @@ class AttendanceSyncServiceTest extends TestCase
             AttendanceLog::create([
                 'machine_id' => $machine->id,
                 'biometric_id_lokal' => '1001',
-                'timestamp' => '2026-06-15 08:00:00',
+                // Detik berbeda per log: (mesin, PIN, timestamp) wajib unik.
+                'timestamp' => Carbon::parse('2026-06-15 08:00:00')->addSeconds($i),
                 'status_sync' => 'pending',
                 'payload_raw' => 'raw',
             ]);

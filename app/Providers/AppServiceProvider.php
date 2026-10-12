@@ -2,10 +2,10 @@
 
 namespace App\Providers;
 
-use App\Models\Setting;
+use Illuminate\Foundation\Events\DiagnosingHealth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Cache\RateLimiting\Limit;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -22,10 +22,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // FR-09: throttle outgoing requests to Mekari Talenta API to avoid HTTP 429.
-        // Closure dievaluasi per-request, jadi aman membaca setting dari DB di sini.
-        RateLimiter::for('mekari-api', function () {
-            return Limit::perMinute((int) Setting::value('mekari.rate_limit', 60));
+        // Rate limit ke Talenta (FR-09) ditegakkan langsung di
+        // MekariTalentaService::throttle(), bukan lewat RateLimiter::for().
+
+        // Healthcheck /up: selain "PHP hidup", pastikan database terjangkau.
+        // Exception di sini membuat /up membalas HTTP 500, sehingga monitor
+        // uptime / healthcheck container ikut menandai aplikasi tidak sehat
+        // (session, queue, cache, dan semua data ada di DB).
+        Event::listen(DiagnosingHealth::class, function () {
+            DB::select('select 1');
         });
     }
 }

@@ -20,6 +20,7 @@ const ROLE_META = {
   manager: { label: 'Manager', variant: 'default', desc: 'Kelola karyawan & sidik jari, kirim ulang absensi. Tidak bisa mengubah mesin.' },
   operator: { label: 'Operator', variant: 'secondary', desc: 'Operasi harian & kirim absensi, tanpa hak menghapus.' },
   viewer: { label: 'Viewer', variant: 'outline', desc: 'Hanya melihat data, tidak bisa mengubah apa pun.' },
+  employee: { label: 'Karyawan', variant: 'info', desc: 'Akun milik karyawan untuk absen pakai foto di halaman /absen. Tidak bisa membuka admin panel.' },
 }
 const roleLabel = (r) => ROLE_META[r]?.label ?? r
 
@@ -28,6 +29,8 @@ const emptyForm = {
   email: '',
   password: '',
   role: 'operator',
+  // Hanya untuk role employee: karyawan pemilik akun ini.
+  employee_id: '',
   // Scope: outlet mana saja yang boleh disentuh. Mencentang company/brand
   // otomatis mencakup semua yang di bawahnya (diturunkan di server).
   company_ids: [],
@@ -35,7 +38,7 @@ const emptyForm = {
   outlet_ids: [],
 }
 
-export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'operator', 'viewer'], companies = [] }) {
+export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'operator', 'viewer'], companies = [], employees = [] }) {
   const { props } = usePage()
   const currentUserId = props?.auth?.user?.id
 
@@ -43,8 +46,16 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
   const [editingId, setEditingId] = useState(null)
   const [formData, setFormData] = useState(emptyForm)
 
-  // Admin tak pernah dibatasi outlet, jadi pemilih scope disembunyikan untuknya.
-  const needsScope = formData.role !== 'admin'
+  // Admin tak pernah dibatasi outlet, dan akun karyawan tak melihat data
+  // outlet mana pun — pemilih scope disembunyikan untuk keduanya.
+  const isEmployeeRole = formData.role === 'employee'
+  const needsScope = formData.role !== 'admin' && !isEmployeeRole
+
+  // Karyawan yang sudah punya akun lain tak bisa dipilih lagi (1 karyawan = 1 akun).
+  const linkedEmployeeIds = new Set(
+    users.filter((u) => u.employee_id && u.id !== editingId).map((u) => u.employee_id)
+  )
+  const employeeName = (id) => employees.find((e) => e.id === id)?.name
 
   const openCreate = () => {
     setEditingId(null)
@@ -60,6 +71,7 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
       email: u.email ?? '',
       password: '',
       role: u.role ?? 'operator',
+      employee_id: u.employee_id ?? '',
       company_ids: u.company_ids ?? [],
       brand_ids: u.brand_ids ?? [],
       outlet_ids: u.outlet_ids ?? [],
@@ -81,6 +93,9 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
   // Ringkasan scope untuk kolom tabel.
   const scopeSummary = (u) => {
     if (u.role === 'admin') return 'Semua outlet'
+    if (u.role === 'employee') {
+      return u.employee_id ? `Karyawan: ${employeeName(u.employee_id) || '?'}` : null
+    }
 
     const count =
       (u.company_ids?.length ?? 0) + (u.brand_ids?.length ?? 0) + (u.outlet_ids?.length ?? 0)
@@ -110,6 +125,7 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
       name: formData.name,
       email: formData.email,
       role: formData.role,
+      employee_id: isEmployeeRole ? formData.employee_id || null : null,
       // Admin tak punya scope; kirim kosong supaya sisa penugasan lama dibersihkan.
       company_ids: needsScope ? formData.company_ids : [],
       brand_ids: needsScope ? formData.brand_ids : [],
@@ -242,7 +258,7 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
         ),
       },
     ],
-    [currentUserId]
+    [currentUserId, employees]
   )
 
   return (
@@ -319,6 +335,31 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
                   <p className="text-xs text-slate-500">{ROLE_META[formData.role]?.desc}</p>
                 </div>
               </div>
+
+              {isEmployeeRole && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Karyawan</label>
+                  <Select
+                    required
+                    value={formData.employee_id}
+                    onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })}
+                  >
+                    <option value="">— Pilih karyawan —</option>
+                    {employees.map((emp) => (
+                      <option key={emp.id} value={emp.id} disabled={linkedEmployeeIds.has(emp.id)}>
+                        {emp.name}
+                        {emp.biometric_id ? ` (PIN ${emp.biometric_id})` : ''}
+                        {linkedEmployeeIds.has(emp.id) ? ' — sudah punya akun' : ''}
+                        {!emp.allow_manual_attendance ? ' — belum diizinkan absen foto' : ''}
+                      </option>
+                    ))}
+                  </Select>
+                  <p className="text-xs text-slate-500">
+                    Karyawan juga harus diizinkan absen foto di halaman Employees, dan outletnya
+                    harus punya titik koordinat.
+                  </p>
+                </div>
+              )}
 
               {/* Wewenang data: Company > Brand > Outlet.
                   Mencentang company/brand otomatis mencakup semua di bawahnya —

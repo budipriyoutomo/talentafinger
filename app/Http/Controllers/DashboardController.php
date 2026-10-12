@@ -11,7 +11,10 @@ use App\Models\Outlet;
 use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Inertia\Inertia;
+use Throwable;
 
 /**
  * Halaman-halaman Inertia. Sama seperti API, tiap halaman memeriksa dua hal:
@@ -24,28 +27,87 @@ class DashboardController extends Controller
     {
         $user = $request->user();
 
+        // Akun karyawan tak punya urusan di admin panel; halamannya hanya /absen.
+        if ($user->isEmployee()) {
+            return redirect('/absen');
+        }
+
         // Status LIVE dari last_seen_at; kolom `status` di DB basi (lihat /api/machines).
         $machines = Machine::visibleTo($user)->get()->each(function ($m) {
             $m->status = $m->isOnline() ? 'online' : 'offline';
         });
 
-        // Angka statistik ikut scope: manajer tak boleh melihat hitungan log
-        // outlet lain, sekalipun hanya berupa jumlah.
+        return Inertia::render('Dashboard', [
+            'machines' => $machines,
+            'stats' => $this->buildStats($user),
+        ]);
+    }
+
+    /** JSON statistik untuk polling dashboard (GET /api/dashboard-stats). */
+    public function stats(Request $request)
+    {
+        return $this->buildStats($request->user());
+    }
+
+    /**
+     * Angka statistik dashboard. Hitungan log ikut scope: manajer tak boleh
+     * melihat hitungan log outlet lain, sekalipun hanya berupa jumlah. Angka
+     * job background bersifat global (tak memuat data outlet mana pun).
+     */
+    private function buildStats(User $user): array
+    {
         $scoped = fn () => AttendanceLog::visibleTo($user);
 
-        $stats = [
+        return [
             'logs_today' => $scoped()->whereDate('created_at', today())->count(),
             'sent_count' => $scoped()->where('status_sync', 'sent')->whereDate('created_at', today())->count(),
             'failed_count' => $scoped()->where('status_sync', 'failed')->count(),
             'queue_pending' => $scoped()->where('status_sync', 'pending')->count(),
-            'queue_processing' => 0,
-            'queue_failed' => $scoped()->where('status_sync', 'failed')->count(),
+            // Absen foto menunggu persetujuan supervisor (di outlet wewenangnya).
+            'review_pending' => $scoped()->where('status_sync', 'pending_review')->count(),
+            ...$this->jobStats(),
         ];
+    }
 
-        return Inertia::render('Dashboard', [
-            'machines' => $machines,
-            'stats' => $stats,
-        ]);
+    /**
+     * Kondisi antrean job background (resend absensi, sidik jari bulk, dll).
+     *
+     *   jobs_waiting    = menunggu diambil worker
+     *   jobs_processing = sedang dikerjakan worker (hanya diketahui di driver database)
+     *   jobs_failed     = job yang gagal permanen (tabel failed_jobs)
+     *
+     * null = tak bisa dihitung (driver tak mendukung / tabel tak terjangkau);
+     * dashboard tak boleh ikut error hanya karena angka ini.
+     */
+    private function jobStats(): array
+    {
+        $waiting = $processing = $failed = null;
+
+        try {
+            if (config('queue.connections.' . config('queue.default') . '.driver') === 'database') {
+                $table = DB::table(config('queue.connections.' . config('queue.default') . '.table', 'jobs'));
+                $waiting = (clone $table)->whereNull('reserved_at')->count();
+                $processing = (clone $table)->whereNotNull('reserved_at')->count();
+            } else {
+                $waiting = Queue::size('default') + Queue::size('attendance');
+            }
+        } catch (Throwable $e) {
+            report($e);
+        }
+
+        try {
+            if (str_starts_with((string) config('queue.failed.driver'), 'database')) {
+                $failed = DB::table(config('queue.failed.table', 'failed_jobs'))->count();
+            }
+        } catch (Throwable $e) {
+            report($e);
+        }
+
+        return [
+            'jobs_waiting' => $waiting,
+            'jobs_processing' => $processing,
+            'jobs_failed' => $failed,
+        ];
     }
 
     public function machines(Request $request)
@@ -118,7 +180,7 @@ class DashboardController extends Controller
         $perPage = in_array($perPage, [10, 50, 100, 250, 500], true) ? $perPage : 100;
 
         $paginator = AttendanceLog::visibleTo($user)
-            ->with('machine')
+            ->with(['machine', 'employee', 'outlet', 'reviewer'])
             ->applyFilters($filters)
             ->orderBy('created_at', 'desc')
             ->paginate($perPage)
@@ -126,11 +188,27 @@ class DashboardController extends Controller
             ->through(fn($log) => [
                 'id' => $log->id,
                 'machine_id' => $log->machine_id,
+                'source' => $log->source,
                 'biometric_id_lokal' => $log->biometric_id_lokal,
                 'timestamp' => $log->timestamp,
                 'status_sync' => $log->status_sync,
                 'error_message' => $log->error_message,
-                'employee_name' => $employeeByPin->get($log->biometric_id_lokal)?->name,
+                // Log manual tahu karyawannya langsung; log mesin di-resolve via PIN.
+                'employee_name' => $log->isManual()
+                    ? $log->employee?->name
+                    : $employeeByPin->get($log->biometric_id_lokal)?->name,
+                // Detail absen foto (null untuk log mesin).
+                'manual' => $log->isManual() ? [
+                    'outlet_name' => $log->outlet?->name,
+                    'distance_meters' => $log->distance_meters,
+                    'accuracy_meters' => $log->accuracy_meters,
+                    'latitude' => $log->latitude,
+                    'longitude' => $log->longitude,
+                    'photo_url' => "/api/attendance-logs/{$log->id}/photo",
+                    'reviewed_by' => $log->reviewer?->name,
+                    'reviewed_at' => $log->reviewed_at,
+                    'review_note' => $log->review_note,
+                ] : null,
             ]);
 
         return Inertia::render('AttendanceLogs', [
@@ -179,6 +257,7 @@ class DashboardController extends Controller
                     'biometric_id' => $e->biometric_id,
                     'is_active' => $e->is_active,
                     'device_privilege' => $e->device_privilege,
+                    'allow_manual_attendance' => $e->allow_manual_attendance,
                     'fingerprints_count' => $e->biometric_templates_count,
                     'fingerprints_enrolled_at' => $e->biometric_templates_max_enrolled_at,
                     // Banyak outlet per karyawan; brand & company tersirat per outlet.
@@ -276,12 +355,15 @@ class DashboardController extends Controller
             // Scope tiap user ikut dikirim supaya form bisa mencentang ulang
             // Company/Brand/Outlet yang jadi wewenangnya.
             'users' => User::with('dataScopes')->orderBy('name')->get()->map(fn (User $u) => [
-                ...$u->only(['id', 'name', 'email', 'role', 'created_at']),
+                ...$u->only(['id', 'name', 'email', 'role', 'employee_id', 'created_at']),
                 'company_ids' => $u->dataScopes->where('scope_type', 'company')->pluck('scope_id')->values(),
                 'brand_ids' => $u->dataScopes->where('scope_type', 'brand')->pluck('scope_id')->values(),
                 'outlet_ids' => $u->dataScopes->where('scope_type', 'outlet')->pluck('scope_id')->values(),
             ]),
             'roles' => User::ROLES,
+            // Pilihan karyawan untuk ditautkan ke akun ber-role `employee`.
+            'employees' => Employee::orderBy('name')
+                ->get(['id', 'name', 'biometric_id', 'is_active', 'allow_manual_attendance']),
             // Admin melihat seluruh pohon organisasi untuk menugaskan scope.
             'companies' => $this->orgTree($request->user()),
         ]);

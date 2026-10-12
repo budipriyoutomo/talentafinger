@@ -11,6 +11,7 @@ class DeviceCommand extends Model
         'type',
         'command',
         'status',
+        'attempts',
         'response',
         'sent_at',
         'done_at',

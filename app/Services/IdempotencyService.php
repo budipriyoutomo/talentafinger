@@ -19,13 +19,4 @@ class IdempotencyService
     {
         return AttendanceLog::create($data);
     }
-
-    public function markDuplicate(string $machineId, string $bioId, string $timestamp): void
-    {
-        AttendanceLog::where('machine_id', $machineId)
-            ->where('biometric_id_lokal', $bioId)
-            ->where('timestamp', $timestamp)
-            ->where('status_sync', 'pending')
-            ->update(['status_sync' => 'duplicate']);
-    }
 }

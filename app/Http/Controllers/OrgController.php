@@ -102,7 +102,8 @@ class OrgController extends Controller
                     ->ignore($id),
             ],
             'is_active' => 'boolean',
-        ]));
+            ...self::COORDINATE_RULES,
+        ], self::COORDINATE_MESSAGES));
 
         return $brand;
     }
@@ -118,6 +119,20 @@ class OrgController extends Controller
 
     // --- Outlets ---
 
+    /**
+     * Titik koordinat outlet untuk geofence absen manual pakai foto. Opsional,
+     * tapi harus diisi berpasangan — satu tanpa yang lain tak berguna.
+     */
+    private const COORDINATE_RULES = [
+        'latitude' => 'nullable|numeric|between:-90,90|required_with:longitude',
+        'longitude' => 'nullable|numeric|between:-180,180|required_with:latitude',
+    ];
+
+    private const COORDINATE_MESSAGES = [
+        'latitude.required_with' => 'Latitude & longitude harus diisi berpasangan.',
+        'longitude.required_with' => 'Latitude & longitude harus diisi berpasangan.',
+    ];
+
     public function storeOutlet(Request $request)
     {
         $this->authorizePermission($request, 'org.manage');
@@ -129,8 +144,10 @@ class OrgController extends Controller
                 Rule::unique('outlets', 'name')->where(fn ($q) => $q->where('brand_id', $request->brand_id)),
             ],
             'is_active' => 'boolean',
+            ...self::COORDINATE_RULES,
         ], [
             'name.unique' => 'Outlet dengan nama ini sudah ada di brand tersebut.',
+            ...self::COORDINATE_MESSAGES,
         ]));
     }
 

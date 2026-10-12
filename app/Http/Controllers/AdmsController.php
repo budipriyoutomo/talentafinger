@@ -7,7 +7,9 @@ use App\Models\Machine;
 use App\Models\DeviceCommand;
 use App\Models\BiometricTemplate;
 use App\Services\AdmsParserService;
+use App\Services\DeviceCommandService;
 use App\Services\IdempotencyService;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Log;
 
 class AdmsController extends Controller
@@ -15,6 +17,7 @@ class AdmsController extends Controller
     public function __construct(
         private AdmsParserService $parserService,
         private IdempotencyService $idempotencyService,
+        private DeviceCommandService $commandService,
     ) {}
 
     public function handshake(Request $request)
@@ -31,10 +34,9 @@ class AdmsController extends Controller
             return response('Unauthorized', 200);
         }
 
-        $machine->update([
-            'last_seen_at' => now(),
-            'status' => 'online',
-        ]);
+        // Status online/offline dihitung LIVE dari last_seen_at (Machine::isOnline());
+        // kolom `status` tak lagi ditulis karena tak pernah direset ke offline.
+        $machine->update(['last_seen_at' => now()]);
 
         // Mesin nonaktif: jangan beri config upload, supaya datanya tidak masuk.
         if (!$machine->is_active) {
@@ -81,10 +83,7 @@ class AdmsController extends Controller
             return response('OK', 200);
         }
 
-        $machine->update([
-            'last_seen_at' => now(),
-            'status' => 'online',
-        ]);
+        $machine->update(['last_seen_at' => now()]);
 
         // Mesin nonaktif: ack saja, jangan simpan datanya.
         if (!$machine->is_active) {
@@ -125,6 +124,11 @@ class AdmsController extends Controller
         $records = $this->parserService->parse($request->getContent());
 
         foreach ($records as $rec) {
+            // Mesin mengirim ulang record yang sama bila ack-nya tak sampai
+            // (koneksi putus-nyambung). Kiriman ulang cukup DIABAIKAN — log asli
+            // tak disentuh, jadi yang masih 'pending' tetap akan terkirim ke
+            // Talenta. (Dulu log asli diubah jadi 'duplicate' sehingga absensinya
+            // tak pernah terkirim.)
             $isDuplicate = $this->idempotencyService->isDuplicate(
                 $machine->id,
                 $rec['biometric_id'],
@@ -132,23 +136,24 @@ class AdmsController extends Controller
             );
 
             if ($isDuplicate) {
-                $this->idempotencyService->markDuplicate(
-                    $machine->id,
-                    $rec['biometric_id'],
-                    $rec['timestamp']
-                );
                 continue;
             }
 
-            // Simpan sebagai 'pending'. Pengiriman ke Mekari Talenta dilakukan
-            // manual via tombol di aplikasi (AttendanceController@send).
-            $this->idempotencyService->createLog([
-                'machine_id' => $machine->id,
-                'biometric_id_lokal' => $rec['biometric_id'],
-                'timestamp' => $rec['timestamp'],
-                'status_sync' => 'pending',
-                'payload_raw' => $rec['raw'],
-            ]);
+            // Simpan sebagai 'pending'. Pengiriman ke Talenta dilakukan oleh
+            // auto-send terjadwal atau tombol kirim manual di aplikasi.
+            try {
+                $this->idempotencyService->createLog([
+                    'machine_id' => $machine->id,
+                    'biometric_id_lokal' => $rec['biometric_id'],
+                    'timestamp' => $rec['timestamp'],
+                    'status_sync' => 'pending',
+                    'payload_raw' => $rec['raw'],
+                ]);
+            } catch (UniqueConstraintViolationException) {
+                // Kalah balapan dengan POST lain yang menyimpan record sama di
+                // antara cek isDuplicate() dan insert ini — unique index DB yang
+                // menangkapnya. Abaikan, persis seperti kiriman ulang biasa.
+            }
         }
 
         return response('OK', 200);
@@ -167,29 +172,20 @@ class AdmsController extends Controller
             return response('OK', 200);
         }
 
-        $machine->update([
-            'last_seen_at' => now(),
-            'status' => 'online',
-        ]);
+        $machine->update(['last_seen_at' => now()]);
 
         if (!$machine->is_active) {
             return response('OK', 200);
         }
 
-        $commands = DeviceCommand::where('machine_id', $machine->id)
-            ->where('status', 'pending')
-            ->orderBy('id')
-            ->get();
+        // Pending + 'sent' basi (dikirim ulang); sudah ditandai 'sent' di dalamnya.
+        $commands = $this->commandService->takeForDelivery($machine);
 
         if ($commands->isEmpty()) {
             return response('OK', 200);
         }
 
-        $lines = [];
-        foreach ($commands as $cmd) {
-            $lines[] = "C:{$cmd->id}:{$cmd->command}";
-            $cmd->update(['status' => 'sent', 'sent_at' => now()]);
-        }
+        $lines = $commands->map(fn (DeviceCommand $cmd) => "C:{$cmd->id}:{$cmd->command}")->all();
 
         return response(implode("\n", $lines) . "\n", 200)
             ->header('Content-Type', 'text/plain');
@@ -201,6 +197,15 @@ class AdmsController extends Controller
      */
     public function devicecmd(Request $request)
     {
+        // Mesin mengirim SN di query string (?SN=...), sama seperti getrequest.
+        // Tanpa pengecekan ini, siapa pun yang menebak ID perintah bisa menandai
+        // perintah mesin lain 'done' sehingga tak pernah dieksekusi.
+        $machine = Machine::where('serial_number', $request->query('SN'))->first();
+
+        if (!$machine) {
+            return response('OK', 200);
+        }
+
         foreach (explode("\n", trim($request->getContent())) as $line) {
             $line = trim($line);
             if ($line === '') {
@@ -214,7 +219,7 @@ class AdmsController extends Controller
                 continue;
             }
 
-            DeviceCommand::where('id', $id)->update([
+            DeviceCommand::where('id', $id)->where('machine_id', $machine->id)->update([
                 'status' => 'done',
                 'response' => $line,
                 'done_at' => now(),

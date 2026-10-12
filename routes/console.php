@@ -21,3 +21,7 @@ Schedule::command('machine:auto-sync-time')->everyMinute()->withoutOverlapping()
 // Command menahan diri sesuai pengaturan (on/off, interval) dan menyimpan
 // hasil ke kolom tcp_* tiap mesin aktif ber-IP.
 Schedule::command('machine:probe-tcp')->everyMinute()->withoutOverlapping();
+
+// Bersihkan arsip CSV/response kiriman Talenta yang melewati batas retensi
+// (setting mekari.file_retention_days) supaya disk VPS tak penuh.
+Schedule::command('talenta:prune-files')->dailyAt('02:30')->withoutOverlapping();

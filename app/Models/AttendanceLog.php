@@ -11,35 +11,97 @@ class AttendanceLog extends Model
     protected $keyType = 'string';
     public $incrementing = false;
 
+    /** Log dari mesin fingerprint (ADMS). */
+    public const SOURCE_MACHINE = 'machine';
+
+    /** Absen manual karyawan pakai foto + geolokasi (lihat ManualAttendanceController). */
+    public const SOURCE_MANUAL_PHOTO = 'manual_photo';
+
+    public const SOURCES = [self::SOURCE_MACHINE, self::SOURCE_MANUAL_PHOTO];
+
     protected $fillable = [
         'machine_id',
+        'source',
+        'employee_id',
+        'outlet_id',
         'biometric_id_lokal',
         'timestamp',
         'status_sync',
         'payload_raw',
         'error_message',
+        'photo_path',
+        'latitude',
+        'longitude',
+        'accuracy_meters',
+        'distance_meters',
+        'reviewed_by',
+        'reviewed_at',
+        'review_note',
+    ];
+
+    protected $attributes = [
+        'source' => self::SOURCE_MACHINE,
     ];
 
     protected $casts = [
         'timestamp' => 'datetime',
+        'reviewed_at' => 'datetime',
+        'latitude' => 'float',
+        'longitude' => 'float',
+        'accuracy_meters' => 'integer',
+        'distance_meters' => 'integer',
     ];
+
+    /** Path foto di disk privat — jangan pernah ikut terkirim apa adanya ke browser. */
+    protected $hidden = ['photo_path'];
 
     public function machine()
     {
         return $this->belongsTo(Machine::class);
     }
 
+    /** Karyawan pemilik absen manual (log mesin: null, karyawan di-resolve via PIN). */
+    public function employee()
+    {
+        return $this->belongsTo(Employee::class);
+    }
+
+    /** Outlet tempat absen manual dilakukan (log mesin: null, pakai outlet mesinnya). */
+    public function outlet()
+    {
+        return $this->belongsTo(Outlet::class);
+    }
+
+    public function reviewer()
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
+    public function isManual(): bool
+    {
+        return $this->source === self::SOURCE_MANUAL_PHOTO;
+    }
+
     /**
-     * Log mengikuti outlet MESIN tempat ia terekam (bukan outlet karyawan),
-     * karena log memang peristiwa fisik di outlet tersebut. Konsekuensinya: log
-     * dari mesin yang belum ditempatkan hanya terlihat oleh user tanpa batas.
-     * $user null = konteks sistem (queue/command), tanpa batas.
+     * Outlet "pemilik" log untuk keperluan scope akses: outlet MESIN untuk log
+     * mesin, outlet tempat absen untuk log manual.
      */
+    public function owningOutletId(): ?string
+    {
+        return $this->isManual() ? $this->outlet_id : $this->machine?->outlet_id;
+    }
+
     /**
      * Nilai status_sync yang boleh dipakai sebagai filter. Dipakai bersama oleh
      * halaman (tab "Gagal") dan aksi kirim ulang supaya tak ada dua daftar.
      */
-    public const STATUSES = ['pending', 'sent', 'failed', 'duplicate'];
+    public const STATUSES = ['pending_review', 'pending', 'sent', 'failed', 'rejected', 'duplicate'];
+
+    /**
+     * Status yang TIDAK boleh dikirim ke Talenta lewat jalur mana pun:
+     * absen manual yang belum disetujui supervisor, atau yang ditolak.
+     */
+    public const UNSENDABLE_STATUSES = ['pending_review', 'rejected'];
 
     /**
      * Status yang boleh dikirim ULANG ke Talenta lewat aksi kirim ulang.
@@ -66,6 +128,7 @@ class AttendanceLog extends Model
     public static function filtersFromRequest(\Illuminate\Http\Request $request): array
     {
         $status = $request->input('status');
+        $source = $request->input('source');
 
         return [
             'machine_id' => $request->input('machine_id') ?: null,
@@ -74,6 +137,7 @@ class AttendanceLog extends Model
             'date_from' => $request->input('date_from') ?: null,
             'date_to' => $request->input('date_to') ?: null,
             'status' => in_array($status, self::STATUSES, true) ? $status : null,
+            'source' => in_array($source, self::SOURCES, true) ? $source : null,
         ];
     }
 
@@ -99,21 +163,33 @@ class AttendanceLog extends Model
 
         $outletId = $filters['outlet_id'] ?? null;
         $brandId = $filters['brand_id'] ?? null;
+        $source = $filters['source'] ?? null;
+        $source = in_array($source, self::SOURCES, true) ? $source : null;
 
         return $query
             ->when($filters['machine_id'] ?? null, fn ($q, $v) => $q->where('machine_id', $v))
             ->when($status, fn ($q, $v) => $q->where('status_sync', $v))
+            ->when($source, fn ($q, $v) => $q->where('source', $v))
             ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('timestamp', '>=', $v))
             ->when($filters['date_to'] ?? null, fn ($q, $v) => $q->whereDate('timestamp', '<=', $v))
-            // Brand/outlet mengikuti outlet MESIN tempat log terekam — dasar yang
-            // sama dengan visibleTo(), jadi tak ada dua definisi "outlet-nya log".
-            ->when($outletId, fn ($q, $v) => $q->whereHas('machine', fn ($qq) => $qq->where('outlet_id', $v)))
-            ->when($brandId && ! $outletId, fn ($q) => $q->whereHas(
-                'machine.outlet',
-                fn ($qq) => $qq->where('brand_id', $brandId),
-            ));
+            // Brand/outlet mengikuti outlet MESIN (log mesin) atau outlet tempat
+            // absen (log manual) — dasar yang sama dengan visibleTo(), jadi tak
+            // ada dua definisi "outlet-nya log".
+            ->when($outletId, fn ($q, $v) => $q->where(fn ($qq) => $qq
+                ->whereHas('machine', fn ($m) => $m->where('outlet_id', $v))
+                ->orWhere('outlet_id', $v)))
+            ->when($brandId && ! $outletId, fn ($q) => $q->where(fn ($qq) => $qq
+                ->whereHas('machine.outlet', fn ($o) => $o->where('brand_id', $brandId))
+                ->orWhereHas('outlet', fn ($o) => $o->where('brand_id', $brandId))));
     }
 
+    /**
+     * Log mesin mengikuti outlet MESIN tempat ia terekam (bukan outlet karyawan),
+     * karena log memang peristiwa fisik di outlet tersebut. Log manual mengikuti
+     * outlet tempat absen (kolom outlet_id). Log dari mesin yang belum
+     * ditempatkan hanya terlihat oleh user tanpa batas.
+     * $user null = konteks sistem (queue/command), tanpa batas.
+     */
     public function scopeVisibleTo($query, ?User $user)
     {
         $outletIds = $user?->scopedOutletIds();
@@ -122,6 +198,8 @@ class AttendanceLog extends Model
             return $query;
         }
 
-        return $query->whereHas('machine', fn ($q) => $q->whereIn('outlet_id', $outletIds));
+        return $query->where(fn ($q) => $q
+            ->whereHas('machine', fn ($m) => $m->whereIn('outlet_id', $outletIds))
+            ->orWhere(fn ($m) => $m->whereNull('machine_id')->whereIn('outlet_id', $outletIds)));
     }
 }

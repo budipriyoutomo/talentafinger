@@ -186,11 +186,28 @@ class AttendanceSyncService
      */
     public function sendLogs(Collection $logs): array
     {
-        $badges = $this->resolveBadges($logs);
+        // Jaring pengaman: absen manual yang belum disetujui / ditolak supervisor
+        // TIDAK boleh sampai ke Talenta lewat jalur apa pun (kirim satuan, batch,
+        // atau kirim ulang). Dilewati diam-diam, status tak diubah.
+        $logs = $logs->reject(
+            fn (AttendanceLog $log) => in_array($log->status_sync, AttendanceLog::UNSENDABLE_STATUSES, true)
+        )->values();
+
+        if ($logs->isEmpty()) {
+            return [
+                'success' => false,
+                'message' => 'Tidak ada log yang boleh dikirim (absen foto belum disetujui / ditolak).',
+                'sent' => 0,
+                'failed' => 0,
+            ];
+        }
+
+        $badgeOf = $this->resolveBadges($logs);
+        $badges = $logs->mapWithKeys(fn (AttendanceLog $log) => [$log->id => $badgeOf($log)]);
 
         // Pisahkan log yang punya badgeno valid vs yang tidak.
         [$mapped, $unmapped] = $logs->partition(
-            fn (AttendanceLog $log) => filled($badges[$log->biometric_id_lokal] ?? null)
+            fn (AttendanceLog $log) => filled($badges[$log->id])
         );
 
         // Log tanpa karyawan/talenta_employee_id: tandai gagal, jangan kirim PIN mentah.
@@ -210,7 +227,7 @@ class AttendanceSyncService
             ];
         }
 
-        $rows = $mapped->map(fn (AttendanceLog $log) => [$badges[$log->biometric_id_lokal], $log->timestamp]);
+        $rows = $mapped->map(fn (AttendanceLog $log) => [$badges[$log->id], $log->timestamp]);
         $csv = $this->talenta->buildFingerprintCsv($rows);
 
         try {
@@ -244,19 +261,32 @@ class AttendanceSyncService
     }
 
     /**
-     * Resolusi badgeno (talenta_employee_id) untuk semua log dalam satu query,
-     * dihindarkan N+1. PIN global: employees.biometric_id == log.biometric_id_lokal.
-     * Key: biometric_id (PIN).
+     * Resolusi badgeno (talenta_employee_id) untuk semua log, maksimal dua query
+     * (hindari N+1). Mengembalikan fungsi log -> badgeno|null.
+     *
+     *   - Log MESIN  : PIN global, employees.biometric_id == log.biometric_id_lokal.
+     *   - Log MANUAL : langsung dari log.employee_id (karyawan yang login) — tak
+     *                  bergantung pada PIN, yang bisa saja belum di-set.
      *
      * @param  Collection<int, AttendanceLog>  $logs
-     * @return array<string, ?string>
+     * @return callable(AttendanceLog): ?string
      */
-    private function resolveBadges(Collection $logs): array
+    private function resolveBadges(Collection $logs): callable
     {
-        $pins = $logs->pluck('biometric_id_lokal')->unique()->all();
+        [$manual, $machine] = $logs->partition(fn (AttendanceLog $log) => $log->employee_id !== null);
 
-        return Employee::whereIn('biometric_id', $pins)
-            ->pluck('talenta_employee_id', 'biometric_id')
-            ->all();
+        $pins = $machine->pluck('biometric_id_lokal')->filter()->unique()->all();
+        $byPin = $pins
+            ? Employee::whereIn('biometric_id', $pins)->pluck('talenta_employee_id', 'biometric_id')->all()
+            : [];
+
+        $employeeIds = $manual->pluck('employee_id')->unique()->all();
+        $byEmployee = $employeeIds
+            ? Employee::whereIn('id', $employeeIds)->pluck('talenta_employee_id', 'id')->all()
+            : [];
+
+        return fn (AttendanceLog $log) => $log->employee_id !== null
+            ? ($byEmployee[$log->employee_id] ?? null)
+            : ($byPin[$log->biometric_id_lokal] ?? null);
     }
 }

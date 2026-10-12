@@ -13,7 +13,7 @@ function initialTab() {
   return ['app', 'users'].includes(t) ? t : 'app'
 }
 
-export default function Settings({ groups = {}, users = [], roles = [], companies = [] }) {
+export default function Settings({ groups = {}, users = [], roles = [], companies = [], employees = [] }) {
   const { props } = usePage()
   const isAdmin = props?.auth?.user?.role === 'admin'
 
@@ -58,7 +58,7 @@ export default function Settings({ groups = {}, users = [], roles = [], companie
 
         {activeTab === 'app' && <AppSettingsPanel groups={groups} />}
         {activeTab === 'users' && isAdmin && (
-          <UsersPanel users={users} roles={roles} companies={companies} />
+          <UsersPanel users={users} roles={roles} companies={companies} employees={employees} />
         )}
       </div>
     </Layout>

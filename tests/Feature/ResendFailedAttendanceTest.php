@@ -66,13 +66,18 @@ class ResendFailedAttendanceTest extends TestCase
         $this->logs($machine, $count, 'failed');
     }
 
+    /** Penghitung detik supaya tiap log punya timestamp unik (unique index idempotensi). */
+    private int $logSeq = 0;
+
     private function logs(Machine $machine, int $count, string $status): void
     {
         foreach (range(1, $count) as $i) {
             AttendanceLog::create([
                 'machine_id' => $machine->id,
                 'biometric_id_lokal' => '1001',
-                'timestamp' => now(),
+                // Basis tetap (bukan now() tiap iterasi) supaya jam yang berjalan
+                // selama loop panjang tak membuat dua log jatuh ke detik yang sama.
+                'timestamp' => today()->subSeconds(++$this->logSeq),
                 'status_sync' => $status,
             ]);
         }

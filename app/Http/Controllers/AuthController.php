@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
@@ -12,9 +13,9 @@ class AuthController extends Controller
     /** Tampilkan form login (halaman tanpa nav/layout). */
     public function showLogin()
     {
-        // Sudah login -> langsung ke dashboard.
+        // Sudah login -> langsung ke halaman utamanya.
         if (Auth::check()) {
-            return redirect('/dashboard');
+            return redirect($this->homeFor(Auth::user()));
         }
 
         return Inertia::render('Login');
@@ -35,7 +36,13 @@ class AuthController extends Controller
 
         $request->session()->regenerate();
 
-        return redirect()->intended('/dashboard');
+        return redirect()->intended($this->homeFor($request->user()));
+    }
+
+    /** Akun karyawan mendarat di halaman absen foto, sisanya di dashboard. */
+    private function homeFor(User $user): string
+    {
+        return $user->isEmployee() ? '/absen' : '/dashboard';
     }
 
     public function logout(Request $request)

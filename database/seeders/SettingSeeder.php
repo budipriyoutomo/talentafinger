@@ -86,6 +86,14 @@ class SettingSeeder extends Seeder
                 'description' => 'Batas request per menit ke API Mekari agar tidak kena HTTP 429.',
                 'default' => (string) config('mekari.rate_limit', 60),
             ],
+            [
+                'key' => 'mekari.file_retention_days',
+                'group' => 'talenta',
+                'type' => 'number',
+                'label' => 'Simpan Arsip CSV (hari)',
+                'description' => 'Salinan CSV & response tiap kiriman ke Talenta (storage/app/talenta) dihapus otomatis setelah sekian hari. 0 = simpan selamanya.',
+                'default' => (string) config('mekari.file_retention_days', 90),
+            ],
 
             // ===== Perangkat / ADMS =====
             [
@@ -165,6 +173,23 @@ class SettingSeeder extends Seeder
                 'label' => 'Ikut Kirim Ulang yang Gagal',
                 'description' => 'Bila aktif, log berstatus "failed" ikut dicoba kirim ulang tiap siklus auto-kirim.',
                 'default' => '0',
+            ],
+            [
+                'key' => 'attendance.manual_photo_enabled',
+                'group' => 'attendance',
+                'type' => 'boolean',
+                'label' => 'Aktifkan Absen Foto',
+                'description' => 'Saklar utama absen manual pakai foto + lokasi (halaman /absen). Karyawan juga harus '
+                    . 'diizinkan satu per satu di halaman Employees dan punya akun ber-role "employee".',
+                'default' => '0',
+            ],
+            [
+                'key' => 'attendance.manual_photo_radius',
+                'group' => 'attendance',
+                'type' => 'number',
+                'label' => 'Radius Absen Foto (meter)',
+                'description' => 'Jarak maksimal karyawan dari titik koordinat outletnya saat absen foto.',
+                'default' => '150',
             ],
 
             // ===== Sinkronisasi jam mesin (AUTO) =====

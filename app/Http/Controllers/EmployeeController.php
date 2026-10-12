@@ -38,6 +38,8 @@ class EmployeeController extends Controller
             'outlet_ids.*' => 'exists:outlets,id',
             'device_privilege' => 'nullable|integer|min:0|max:14',
             'is_active' => 'boolean',
+            // Izin absen manual pakai foto (halaman /absen), default mati.
+            'allow_manual_attendance' => 'boolean',
         ]);
 
         $outletIds = array_values(array_unique($data['outlet_ids'] ?? []));
@@ -70,6 +72,8 @@ class EmployeeController extends Controller
             'outlet_ids.*' => 'exists:outlets,id',
             'device_privilege' => 'nullable|integer|min:0|max:14',
             'is_active' => 'boolean',
+            // Izin absen manual pakai foto (halaman /absen), default mati.
+            'allow_manual_attendance' => 'boolean',
         ]);
 
         $hasOutletKey = array_key_exists('outlet_ids', $data);

@@ -25,6 +25,7 @@ const emptyForm = {
   outlet_ids: [],
   device_privilege: 0,
   is_active: true,
+  allow_manual_attendance: false,
 }
 
 // Hak akses di mesin (privilege ZKTeco). 0=user biasa, 14=admin/super.
@@ -210,6 +211,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
       outlet_ids: (emp.outlets ?? []).map((o) => o.id),
       device_privilege: emp.device_privilege ?? 0,
       is_active: emp.is_active,
+      allow_manual_attendance: !!emp.allow_manual_attendance,
     })
     setShowForm(true)
   }
@@ -261,6 +263,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
       outlet_ids: formData.outlet_ids,
       device_privilege: Number(formData.device_privilege) || 0,
       is_active: formData.is_active,
+      allow_manual_attendance: formData.allow_manual_attendance,
     }
     try {
       const res = await fetch(url, {
@@ -338,6 +341,9 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
             <span className="font-medium">{row.getValue('name')}</span>
             {Number(row.original.device_privilege) !== 0 && (
               <Badge variant="secondary" title={privilegeLabel(row.original.device_privilege)}>Admin</Badge>
+            )}
+            {row.original.allow_manual_attendance && (
+              <Badge variant="info" title="Boleh absen pakai foto di halaman /absen">Absen foto</Badge>
             )}
           </div>
         ),
@@ -620,6 +626,21 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                   onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
                 />
                 Aktif
+              </label>
+              <label className="flex items-start gap-2 text-sm font-medium text-slate-900 dark:text-slate-50">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4"
+                  checked={formData.allow_manual_attendance}
+                  onChange={(e) => setFormData({ ...formData, allow_manual_attendance: e.target.checked })}
+                />
+                <span>
+                  Boleh absen pakai foto
+                  <span className="block text-xs font-normal text-slate-500">
+                    Karyawan bisa absen dari HP (foto + lokasi) di halaman /absen, perlu persetujuan
+                    supervisor. Butuh akun ber-role Karyawan (Pengaturan → User &amp; Role).
+                  </span>
+                </span>
               </label>
               <div className="flex gap-2 border-t border-slate-200 dark:border-slate-800 pt-4">
                 <Button type="submit">{editingId ? 'Update' : 'Save'}</Button>

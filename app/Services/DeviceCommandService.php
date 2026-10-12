@@ -8,9 +8,16 @@ use App\Models\Employee;
 use App\Models\Machine;
 use App\Models\Setting;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 
 class DeviceCommandService
 {
+    /** Perintah 'sent' tanpa balasan selama ini (menit) dikirim ulang. */
+    public const RESEND_AFTER_MINUTES = 10;
+
+    /** Batas total pengiriman satu perintah sebelum ditandai 'expired'. */
+    public const MAX_ATTEMPTS = 3;
+
     /**
      * Encode waktu ke format integer ZKTeco (dipakai SET OPTIONS DateTime=).
      *
@@ -30,16 +37,67 @@ class DeviceCommandService
      */
     public function queueSyncTime(Machine $machine): DeviceCommand
     {
-        $tz = Setting::value('adms.device_timezone', 'Asia/Jakarta');
-        $now = Carbon::now($tz);
-        $encoded = $this->encodeTime($now);
-
         return DeviceCommand::create([
             'machine_id' => $machine->id,
             'type' => 'sync_time',
-            'command' => "SET OPTIONS DateTime={$encoded}",
+            'command' => $this->syncTimeCommand(),
             'status' => 'pending',
         ]);
+    }
+
+    /** Perintah set jam berisi waktu SEKARANG di timezone perangkat. */
+    private function syncTimeCommand(): string
+    {
+        $tz = Setting::value('adms.device_timezone', 'Asia/Jakarta');
+
+        return 'SET OPTIONS DateTime=' . $this->encodeTime(Carbon::now($tz));
+    }
+
+    /**
+     * Ambil perintah yang harus dikirim ke mesin saat ia polling getrequest,
+     * lalu tandai 'sent'.
+     *
+     * Selain yang 'pending', perintah 'sent' yang tak kunjung dibalas mesin
+     * (devicecmd) dalam RESEND_AFTER_MINUTES ikut dikirim ULANG — mesin bisa
+     * saja tak menerima balasan getrequest karena koneksi putus. Setelah
+     * MAX_ATTEMPTS kali tetap tanpa balasan, perintah ditandai 'expired' supaya
+     * tak dikirim selamanya (dan sync_time yang nyangkut tak lagi memblokir
+     * auto-sync jam berikutnya).
+     *
+     * sync_time dihitung ulang dengan jam SAAT DIKIRIM: perintah yang tertahan
+     * (mesin offline) atau dikirim ulang tak boleh menyetel jam ke waktu lampau.
+     *
+     * @return Collection<int, DeviceCommand>
+     */
+    public function takeForDelivery(Machine $machine): Collection
+    {
+        $staleBefore = now()->subMinutes(self::RESEND_AFTER_MINUTES);
+
+        DeviceCommand::where('machine_id', $machine->id)
+            ->where('status', 'sent')
+            ->where('sent_at', '<', $staleBefore)
+            ->where('attempts', '>=', self::MAX_ATTEMPTS)
+            ->update([
+                'status' => 'expired',
+                'response' => 'Tak ada balasan dari mesin setelah ' . self::MAX_ATTEMPTS . 'x dikirim.',
+            ]);
+
+        $commands = DeviceCommand::where('machine_id', $machine->id)
+            ->where(fn ($q) => $q->where('status', 'pending')
+                ->orWhere(fn ($q) => $q->where('status', 'sent')->where('sent_at', '<', $staleBefore)))
+            ->orderBy('id')
+            ->get();
+
+        foreach ($commands as $cmd) {
+            $cmd->update([
+                'command' => $cmd->type === 'sync_time' ? $this->syncTimeCommand() : $cmd->command,
+                'status' => 'sent',
+                'sent_at' => now(),
+                'attempts' => $cmd->attempts + 1,
+            ]);
+        }
+
+        return $commands;
     }
 
     /**

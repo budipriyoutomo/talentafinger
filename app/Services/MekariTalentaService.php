@@ -3,10 +3,15 @@
 namespace App\Services;
 
 use App\Models\Setting;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Sleep;
+use Throwable;
 
 class MekariTalentaService
 {
@@ -48,6 +53,15 @@ class MekariTalentaService
     /** Batas ukuran file Talenta untuk import-fingerprint. */
     private const MAX_CSV_BYTES = 5 * 1024 * 1024;
 
+    /** Total percobaan upload (1 awal + 2 retry). */
+    private const MAX_ATTEMPTS = 3;
+
+    /** Kunci RateLimiter untuk upload ke Talenta (FR-09). */
+    private const RATE_LIMIT_KEY = 'mekari-api:import-fingerprint';
+
+    /** Batas lama menunggu kuota rate limit, supaya request web tak menggantung. */
+    private const MAX_THROTTLE_WAIT_SECONDS = 60;
+
     public function importFingerprint(string $csvContent): Response
     {
         $url = Setting::value('mekari.base_url') . '/attendance/import-fingerprint';
@@ -75,24 +89,34 @@ class MekariTalentaService
         }
 
         // Log REQUEST ke laravel.log. Authorization HMAC di-redact (mengandung tanda tangan),
-        // dan field token tidak ikut dicatat utuh demi keamanan.
+        // dan field token tidak ikut dicatat utuh demi keamanan. Isi CSV TIDAK ikut
+        // dicatat: berisi data absensi karyawan (PII) dan bisa ribuan baris per
+        // upload — salinan lengkapnya sudah ada di file `saved_csv`.
         Log::info('Talenta REQUEST import-fingerprint', [
             'url' => $url,
             'method' => 'POST',
             'headers' => ['Date' => $headers['Date'], 'Authorization' => '[redacted]'],
             'user_id' => Setting::value('mekari.fingerprint_user_id'),
             'saved_csv' => storage_path('app/' . $savedPath),
-            'csv' => $csvContent,
+            'rows' => max(0, substr_count($csvContent, "\n") - 1),
+            'size_bytes' => $sizeBytes,
         ]);
+
+        $this->throttle();
 
         // Timeout eksplisit: tanpa ini satu upload yang menggantung bisa menahan
         // worker (atau request web) sampai PHP sendiri yang menyerah, dan status
         // log tak pernah sempat ditulis. connectTimeout dibuat pendek karena
         // "server tak terjangkau" tak perlu ditunggu lama; timeout total longgar
         // karena Talenta memproses CSV-nya dulu sebelum menjawab.
+        //
+        // Retry HANYA untuk kegagalan yang pasti belum diproses Talenta (lihat
+        // isSafeToRetry). throw=false: respons non-2xx terakhir tetap dikembalikan
+        // apa adanya supaya wasAccepted() & pencatatan error di bawah tetap jalan.
         $response = Http::withHeaders($headers)
             ->connectTimeout(10)
             ->timeout(120)
+            ->retry(self::MAX_ATTEMPTS, fn (int $attempt) => $attempt * 1000, fn (Throwable $e) => $this->isSafeToRetry($e), throw: false)
             ->attach('file', $csvContent, 'attendance.csv')
             ->post($url, [
                 'user_id' => Setting::value('mekari.fingerprint_user_id'),
@@ -134,6 +158,58 @@ class MekariTalentaService
         $errors = $response->json('errors');
 
         return empty($errors);
+    }
+
+    /**
+     * FR-09: tegakkan batas request/menit ke Talenta (setting mekari.rate_limit).
+     *
+     * Kalau kuota menit ini habis, tunggu sampai jendela berikutnya terbuka —
+     * dibatasi MAX_THROTTLE_WAIT_SECONDS supaya tombol "kirim" di web tidak
+     * menggantung tanpa batas. Satu upload CSV = satu hit, retry di dalamnya
+     * tidak dihitung terpisah.
+     */
+    private function throttle(): void
+    {
+        $max = max(1, (int) Setting::value('mekari.rate_limit', 60));
+
+        if (RateLimiter::tooManyAttempts(self::RATE_LIMIT_KEY, $max)) {
+            $wait = min(RateLimiter::availableIn(self::RATE_LIMIT_KEY), self::MAX_THROTTLE_WAIT_SECONDS);
+
+            Log::warning('Talenta rate limit tercapai, menunggu sebelum upload', [
+                'limit_per_minute' => $max,
+                'wait_seconds' => $wait,
+            ]);
+
+            Sleep::sleep($wait);
+        }
+
+        RateLimiter::hit(self::RATE_LIMIT_KEY, 60);
+    }
+
+    /**
+     * Boleh diulang hanya jika Talenta PASTI belum memproses CSV-nya, karena
+     * import bukan operasi idempoten — upload ulang CSV yang sudah diterima
+     * bisa menggandakan data scan di Talenta.
+     *
+     *   - Gagal konek / DNS / connect-timeout -> request belum sampai, aman.
+     *   - Timeout saat MENUNGGU jawaban -> mungkin sudah diproses, JANGAN.
+     *   - 429 / 502 / 503 -> ditolak sebelum diproses, aman.
+     *   - 4xx lain (validasi), 500, 504 -> jangan (salah data / status tak pasti).
+     */
+    private function isSafeToRetry(Throwable $e): bool
+    {
+        if ($e instanceof ConnectionException) {
+            return (bool) preg_match(
+                '/cURL error (6|7):|Could not resolve host|Failed to connect|Connection refused|Connection timed out after/i',
+                $e->getMessage()
+            );
+        }
+
+        if ($e instanceof RequestException) {
+            return in_array($e->response->status(), [429, 502, 503], true);
+        }
+
+        return false;
     }
 
     /**
