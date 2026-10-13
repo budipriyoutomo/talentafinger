@@ -9,7 +9,7 @@ import { STATUS_LABEL, STATUS_VARIANT } from '@/components/ManualReviewDialog'
 import { Camera, CheckCircle2, Loader2, LogOut, MapPin, RefreshCw, Send, ShieldAlert } from 'lucide-react'
 
 // Foto diperkecil di browser sebelum diunggah: hemat kuota karyawan & disk
-// server, dan tetap jauh di bawah batas 8MB validasi server.
+// server, dan tetap jauh di bawah batas upload server (max_photo_kb).
 const MAX_PHOTO_SIDE = 1280
 const PHOTO_QUALITY = 0.8
 
@@ -41,7 +41,7 @@ const GEO_ERRORS = {
  * Mobile-first, tanpa layout admin. Alur: lokasi -> foto -> kirim ->
  * menunggu persetujuan supervisor.
  */
-export default function ManualCheckIn({ employee, blocked_reason, radius_meters, outlets = [], recent = [] }) {
+export default function ManualCheckIn({ employee, blocked_reason, radius_meters, max_photo_kb, recent = [] }) {
   const [position, setPosition] = useState(null) // { latitude, longitude, accuracy }
   const [locating, setLocating] = useState(false)
   const [geoError, setGeoError] = useState(null)
@@ -54,10 +54,8 @@ export default function ManualCheckIn({ employee, blocked_reason, radius_meters,
   const [result, setResult] = useState(null) // { ok, message }
   const fileRef = useRef(null)
 
-  const outletsWithCoords = outlets.filter((o) => o.has_coordinates)
-  const blocked = blocked_reason || (outlets.length > 0 && outletsWithCoords.length === 0
-    ? 'Outlet Anda belum punya titik koordinat. Hubungi admin.'
-    : null)
+  // Semua alasan blokir (fitur mati, belum diizinkan, outlet/koordinat) dari server.
+  const blocked = blocked_reason
 
   const locate = useCallback(() => {
     if (!('geolocation' in navigator)) {
@@ -96,14 +94,26 @@ export default function ManualCheckIn({ employee, blocked_reason, radius_meters,
     if (!file) return
     setPreparing(true)
     setResult(null)
+    let picked = file
     try {
-      const blob = await compressPhoto(file)
-      setPhoto(blob)
-      setPreview(URL.createObjectURL(blob))
+      picked = await compressPhoto(file)
     } catch {
-      // Browser lama tanpa createImageBitmap: kirim file aslinya.
-      setPhoto(file)
-      setPreview(URL.createObjectURL(file))
+      // Browser lama tanpa createImageBitmap: pakai file aslinya.
+    }
+    try {
+      // File asli (gagal dikecilkan) bisa melebihi batas upload server: tolak
+      // di sini dengan pesan jelas daripada ditolak diam-diam oleh PHP.
+      if (max_photo_kb && picked.size > max_photo_kb * 1024) {
+        setPhoto(null)
+        setPreview(null)
+        setResult({
+          ok: false,
+          message: `Foto terlalu besar (${(picked.size / 1048576).toFixed(1)}MB, maks ${(max_photo_kb / 1024).toFixed(1)}MB). Coba ambil ulang dengan resolusi kamera lebih kecil.`,
+        })
+        return
+      }
+      setPhoto(picked)
+      setPreview(URL.createObjectURL(picked))
     } finally {
       setPreparing(false)
     }
@@ -125,7 +135,8 @@ export default function ManualCheckIn({ employee, blocked_reason, radius_meters,
         body: form,
       })
       const data = await res.json().catch(() => ({}))
-      const message = data.message
+      const message = (res.status === 413 && 'Foto terlalu besar untuk diunggah. Ambil ulang foto.')
+        || data.message
         || Object.values(data.errors || {})[0]?.[0]
         || 'Gagal mengirim absen.'
       setResult({ ok: res.ok, message })

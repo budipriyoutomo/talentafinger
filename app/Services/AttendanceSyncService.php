@@ -211,10 +211,20 @@ class AttendanceSyncService
         );
 
         // Log tanpa karyawan/talenta_employee_id: tandai gagal, jangan kirim PIN mentah.
-        if ($unmapped->isNotEmpty()) {
-            AttendanceLog::whereIn('id', $unmapped->pluck('id'))->update([
+        // Pesannya beda per sumber: log manual tak memakai PIN sama sekali.
+        [$unmappedManual, $unmappedMachine] = $unmapped->partition(fn (AttendanceLog $log) => $log->employee_id !== null);
+
+        if ($unmappedMachine->isNotEmpty()) {
+            AttendanceLog::whereIn('id', $unmappedMachine->pluck('id'))->update([
                 'status_sync' => 'failed',
                 'error_message' => 'PIN tak terhubung ke karyawan Talenta (Biometric ID/talenta_employee_id belum di-set).',
+            ]);
+        }
+
+        if ($unmappedManual->isNotEmpty()) {
+            AttendanceLog::whereIn('id', $unmappedManual->pluck('id'))->update([
+                'status_sync' => 'failed',
+                'error_message' => 'Karyawan belum punya Talenta Employee ID (talenta_employee_id belum di-set).',
             ]);
         }
 

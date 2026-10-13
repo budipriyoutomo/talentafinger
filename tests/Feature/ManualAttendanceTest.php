@@ -153,7 +153,15 @@ class ManualAttendanceTest extends TestCase
     {
         $this->outlet->update(['latitude' => null, 'longitude' => null]);
 
-        $this->submit()->assertStatus(422)->assertJsonFragment(['message' => 'Outlet Anda belum punya titik koordinat. Hubungi admin.']);
+        $this->submit()->assertForbidden()->assertJsonFragment(['message' => 'Outlet Anda belum punya titik koordinat. Hubungi admin.']);
+    }
+
+    public function test_karyawan_tanpa_outlet_ditolak(): void
+    {
+        $this->employee->outlets()->detach();
+
+        $this->submit()->assertForbidden()->assertJsonFragment(['message' => 'Anda belum ditautkan ke outlet mana pun. Hubungi admin.']);
+        $this->assertSame(0, AttendanceLog::count());
     }
 
     public function test_absen_kedua_dalam_cooldown_ditolak(): void
@@ -275,6 +283,19 @@ class ManualAttendanceTest extends TestCase
         $csv = collect(Storage::disk('local')->files('talenta'))
             ->first(fn ($f) => str_ends_with($f, '.csv'));
         $this->assertStringContainsString('TAL-777;2026-10-12;08:00:00', Storage::disk('local')->get($csv));
+    }
+
+    public function test_log_manual_tanpa_talenta_id_gagal_dengan_pesan_yang_tepat(): void
+    {
+        Http::fake();
+        $this->employee->update(['talenta_employee_id' => null]);
+        $log = $this->manualLog('pending');
+
+        app(AttendanceSyncService::class)->sendPending();
+
+        Http::assertNothingSent();
+        $this->assertSame('failed', $log->fresh()->status_sync);
+        $this->assertStringContainsString('Talenta Employee ID', $log->fresh()->error_message);
     }
 
     // ===== Akses data & foto =====
