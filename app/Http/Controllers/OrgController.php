@@ -102,8 +102,7 @@ class OrgController extends Controller
                     ->ignore($id),
             ],
             'is_active' => 'boolean',
-            ...self::COORDINATE_RULES,
-        ], self::COORDINATE_MESSAGES));
+        ]));
 
         return $brand;
     }
@@ -165,7 +164,8 @@ class OrgController extends Controller
                     ->ignore($id),
             ],
             'is_active' => 'boolean',
-        ]));
+            ...self::COORDINATE_RULES,
+        ], self::COORDINATE_MESSAGES));
 
         return $outlet;
     }

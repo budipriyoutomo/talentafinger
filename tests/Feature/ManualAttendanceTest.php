@@ -160,8 +160,41 @@ class ManualAttendanceTest extends TestCase
     {
         $this->employee->outlets()->detach();
 
-        $this->submit()->assertForbidden()->assertJsonFragment(['message' => 'Anda belum ditautkan ke outlet mana pun. Hubungi admin.']);
+        $this->submit()->assertForbidden()->assertJsonFragment(['message' => 'Anda belum ditautkan ke outlet aktif mana pun. Hubungi admin.']);
         $this->assertSame(0, AttendanceLog::count());
+    }
+
+    public function test_outlet_nonaktif_tak_dipakai_geofence(): void
+    {
+        $this->outlet->update(['is_active' => false]);
+
+        $this->submit()->assertForbidden()->assertJsonFragment(['message' => 'Anda belum ditautkan ke outlet aktif mana pun. Hubungi admin.']);
+
+        // Outlet aktif lain yang JAUH tetap dipakai, dan outlet nonaktif yang dekat diabaikan.
+        $far = $this->outlet('Kopi Jauh', self::LAT + 0.05, self::LNG);
+        $this->employee->outlets()->attach($far->id);
+        $this->submit()->assertStatus(422)->assertJsonPath('radius_meters', 150);
+    }
+
+    public function test_admin_menyimpan_dan_mempertahankan_koordinat_outlet(): void
+    {
+        $admin = $this->user('admin', 'admin@adms.local');
+        $outlet = $this->outlet('Kopi Baru');
+
+        $this->actingAs($admin)->putJson("/api/outlets/{$outlet->id}", [
+            'brand_id' => $outlet->brand_id, 'name' => 'Kopi Baru', 'latitude' => -6.21, 'longitude' => 106.82,
+        ])->assertOk();
+        $this->assertTrue($outlet->fresh()->hasCoordinates());
+
+        // Ganti nama saja (tanpa kirim koordinat) tak boleh menghapus titiknya.
+        $this->actingAs($admin)->putJson("/api/outlets/{$outlet->id}", [
+            'brand_id' => $outlet->brand_id, 'name' => 'Kopi Baru 2',
+        ])->assertOk();
+        $this->assertEqualsWithDelta(-6.21, $outlet->fresh()->latitude, 0.0000001);
+
+        $this->actingAs($admin)->putJson("/api/outlets/{$outlet->id}", [
+            'brand_id' => $outlet->brand_id, 'name' => 'Kopi Baru 2', 'latitude' => -6.21,
+        ])->assertStatus(422)->assertJsonValidationErrors('longitude');
     }
 
     public function test_absen_kedua_dalam_cooldown_ditolak(): void
@@ -334,6 +367,11 @@ class ManualAttendanceTest extends TestCase
         $this->actingAs($this->employeeUser)->get('/dashboard')->assertRedirect('/absen');
         $this->actingAs($this->employeeUser)->get('/absen')->assertOk();
         $this->actingAs($this->employeeUser)->get('/attendance-logs')->assertForbidden();
+    }
+
+    public function test_akun_karyawan_tak_bisa_membaca_statistik_dashboard(): void
+    {
+        $this->actingAs($this->employeeUser)->getJson('/api/dashboard-stats')->assertForbidden();
     }
 
     public function test_akun_role_employee_wajib_ditautkan_ke_karyawan(): void

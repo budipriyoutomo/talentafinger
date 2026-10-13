@@ -46,6 +46,10 @@ class DashboardController extends Controller
     /** JSON statistik untuk polling dashboard (GET /api/dashboard-stats). */
     public function stats(Request $request)
     {
+        // Sama seperti index(): akun karyawan tak punya urusan dengan dashboard
+        // (angka antrean job bersifat global, bukan per outlet).
+        abort_if($request->user()->isEmployee(), 403);
+
         return $this->buildStats($request->user());
     }
 
@@ -190,7 +194,11 @@ class DashboardController extends Controller
                 'machine_id' => $log->machine_id,
                 'source' => $log->source,
                 'biometric_id_lokal' => $log->biometric_id_lokal,
-                'timestamp' => $log->timestamp,
+                // Jam DINDING apa adanya (jam lokal perangkat, sama dengan yang
+                // dikirim ke Talenta). Jangan kirim objek tanggal: ia ter-serialize
+                // sebagai UTC lalu dikonversi ulang oleh zona waktu browser, sehingga
+                // jam yang tampil bergeser bila browser admin bukan WIB.
+                'timestamp' => $log->timestamp?->format('Y-m-d H:i:s'),
                 'status_sync' => $log->status_sync,
                 'error_message' => $log->error_message,
                 // Log manual tahu karyawannya langsung; log mesin di-resolve via PIN.
@@ -206,7 +214,7 @@ class DashboardController extends Controller
                     'longitude' => $log->longitude,
                     'photo_url' => "/api/attendance-logs/{$log->id}/photo",
                     'reviewed_by' => $log->reviewer?->name,
-                    'reviewed_at' => $log->reviewed_at,
+                    'reviewed_at' => $log->reviewed_at?->format('Y-m-d H:i:s'),
                     'review_note' => $log->review_note,
                 ] : null,
             ]);

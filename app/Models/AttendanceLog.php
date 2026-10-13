@@ -55,6 +55,16 @@ class AttendanceLog extends Model
     /** Path foto di disk privat — jangan pernah ikut terkirim apa adanya ke browser. */
     protected $hidden = ['photo_path'];
 
+    /**
+     * Serialisasi JSON (respons API) memakai jam dinding apa adanya, bukan ISO
+     * UTC: `timestamp` adalah jam lokal perangkat, dan konversi UTC membuat
+     * browser menggesernya lagi sesuai zona waktunya sendiri.
+     */
+    protected function serializeDate(\DateTimeInterface $date): string
+    {
+        return $date->format('Y-m-d H:i:s');
+    }
+
     public function machine()
     {
         return $this->belongsTo(Machine::class);

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { Head, router } from '@inertiajs/react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -6,28 +6,11 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import ThemeToggle from '@/components/ThemeToggle'
 import { STATUS_LABEL, STATUS_VARIANT } from '@/components/ManualReviewDialog'
+import LiveCamera, { cameraSupported } from '@/components/LiveCamera'
 import { Camera, CheckCircle2, Loader2, LogOut, MapPin, RefreshCw, Send, ShieldAlert } from 'lucide-react'
-
-// Foto diperkecil di browser sebelum diunggah: hemat kuota karyawan & disk
-// server, dan tetap jauh di bawah batas upload server (max_photo_kb).
-const MAX_PHOTO_SIDE = 1280
-const PHOTO_QUALITY = 0.8
 
 function csrf() {
   return document.querySelector('meta[name="csrf-token"]').content
-}
-
-/** Kecilkan foto ke sisi terpanjang MAX_PHOTO_SIDE px, hasil JPEG. */
-async function compressPhoto(file) {
-  const bitmap = await createImageBitmap(file)
-  const scale = Math.min(1, MAX_PHOTO_SIDE / Math.max(bitmap.width, bitmap.height))
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.round(bitmap.width * scale)
-  canvas.height = Math.round(bitmap.height * scale)
-  canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-  bitmap.close?.()
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', PHOTO_QUALITY))
-  return blob || file
 }
 
 const GEO_ERRORS = {
@@ -48,38 +31,44 @@ export default function ManualCheckIn({ employee, blocked_reason, radius_meters,
 
   const [photo, setPhoto] = useState(null) // Blob siap kirim
   const [preview, setPreview] = useState(null)
-  const [preparing, setPreparing] = useState(false)
+  const [cameraOpen, setCameraOpen] = useState(false)
 
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState(null) // { ok, message }
-  const fileRef = useRef(null)
 
   // Semua alasan blokir (fitur mati, belum diizinkan, outlet/koordinat) dari server.
   const blocked = blocked_reason
 
-  const locate = useCallback(() => {
+  // Ambil lokasi SEGAR. Resolve { latitude, longitude, accuracy } atau null
+  // (pesan error sudah ditaruh di geoError).
+  const locate = useCallback(() => new Promise((resolve) => {
     if (!('geolocation' in navigator)) {
       setGeoError('Browser ini tidak mendukung lokasi.')
+      resolve(null)
       return
     }
     setLocating(true)
     setGeoError(null)
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setPosition({
+        const next = {
           latitude: pos.coords.latitude,
           longitude: pos.coords.longitude,
           accuracy: pos.coords.accuracy,
-        })
+        }
+        setPosition(next)
         setLocating(false)
+        resolve(next)
       },
       (err) => {
+        setPosition(null)
         setGeoError(GEO_ERRORS[err.code] || err.message)
         setLocating(false)
+        resolve(null)
       },
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 },
     )
-  }, [])
+  }), [])
 
   // Langsung minta lokasi saat halaman dibuka (selama tidak diblokir).
   useEffect(() => {
@@ -88,35 +77,17 @@ export default function ManualCheckIn({ employee, blocked_reason, radius_meters,
 
   useEffect(() => () => preview && URL.revokeObjectURL(preview), [preview])
 
-  const onPhotoPicked = async (e) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-    setPreparing(true)
+  const onCaptured = (blob) => {
+    setCameraOpen(false)
     setResult(null)
-    let picked = file
-    try {
-      picked = await compressPhoto(file)
-    } catch {
-      // Browser lama tanpa createImageBitmap: pakai file aslinya.
+    // Hasil kamera sudah dikecilkan (maks 1280px JPEG); cek ini hanya jaring
+    // pengaman bila batas upload server dipasang sangat kecil.
+    if (max_photo_kb && blob.size > max_photo_kb * 1024) {
+      setResult({ ok: false, message: `Foto terlalu besar (maks ${(max_photo_kb / 1024).toFixed(1)}MB). Coba ambil ulang.` })
+      return
     }
-    try {
-      // File asli (gagal dikecilkan) bisa melebihi batas upload server: tolak
-      // di sini dengan pesan jelas daripada ditolak diam-diam oleh PHP.
-      if (max_photo_kb && picked.size > max_photo_kb * 1024) {
-        setPhoto(null)
-        setPreview(null)
-        setResult({
-          ok: false,
-          message: `Foto terlalu besar (${(picked.size / 1048576).toFixed(1)}MB, maks ${(max_photo_kb / 1024).toFixed(1)}MB). Coba ambil ulang dengan resolusi kamera lebih kecil.`,
-        })
-        return
-      }
-      setPhoto(picked)
-      setPreview(URL.createObjectURL(picked))
-    } finally {
-      setPreparing(false)
-    }
+    setPhoto(blob)
+    setPreview(URL.createObjectURL(blob))
   }
 
   const submit = async () => {
@@ -124,11 +95,19 @@ export default function ManualCheckIn({ employee, blocked_reason, radius_meters,
     setSubmitting(true)
     setResult(null)
     try {
+      // Lokasi diambil ULANG tepat saat kirim. Lokasi dari saat halaman dibuka
+      // bisa sudah basi (halaman dibiarkan terbuka lalu karyawan pergi), dan
+      // geofence harus mencerminkan posisi ketika absen benar-benar dikirim.
+      const fresh = await locate()
+      if (!fresh) {
+        setResult({ ok: false, message: 'Lokasi terbaru tidak terbaca. Coba lagi.' })
+        return
+      }
       const form = new FormData()
       form.append('photo', photo, 'absen.jpg')
-      form.append('latitude', position.latitude)
-      form.append('longitude', position.longitude)
-      form.append('accuracy', Math.round(position.accuracy))
+      form.append('latitude', fresh.latitude)
+      form.append('longitude', fresh.longitude)
+      form.append('accuracy', Math.round(fresh.accuracy))
       const res = await fetch('/api/attendance/manual', {
         method: 'POST',
         headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrf() },
@@ -225,24 +204,18 @@ export default function ManualCheckIn({ employee, blocked_reason, radius_meters,
                     className="max-h-72 w-full rounded-md border border-border object-contain"
                   />
                 )}
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*"
-                  capture="user"
-                  className="hidden"
-                  onChange={onPhotoPicked}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1"
-                  onClick={() => fileRef.current?.click()}
-                  disabled={preparing}
-                >
-                  {preparing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
-                  {preview ? 'Ambil ulang foto' : 'Buka kamera'}
-                </Button>
+                {cameraSupported() ? (
+                  <Button variant="outline" size="sm" className="gap-1" onClick={() => setCameraOpen(true)}>
+                    <Camera className="h-3.5 w-3.5" />
+                    {preview ? 'Ambil ulang foto' : 'Buka kamera'}
+                  </Button>
+                ) : (
+                  <p className="text-sm text-red-600 dark:text-red-400">
+                    Browser ini tidak bisa membuka kamera langsung. Gunakan Chrome / Safari versi terbaru
+                    (alamat harus https://).
+                  </p>
+                )}
+                {cameraOpen && <LiveCamera onCapture={onCaptured} onClose={() => setCameraOpen(false)} />}
               </section>
 
               {/* 3. Kirim */}

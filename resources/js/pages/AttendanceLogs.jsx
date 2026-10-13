@@ -47,8 +47,12 @@ const RESENDABLE_TABS = ['failed', 'sent']
 // Kata yang dipakai di tombol & konfirmasi, per tab.
 const RESEND_LABEL = { failed: 'Gagal', sent: 'Terkirim' }
 
-// Format timestamp jadi "YYYY-MM-DD HH:mm:ss" (waktu lokal).
+// Server sudah mengirim jam dinding "YYYY-MM-DD HH:mm:ss" (jam lokal perangkat):
+// tampilkan apa adanya, JANGAN di-parse ke Date (akan ikut zona waktu browser).
+// Nilai ISO lama (mis. dari respons API) tetap diformat sebagai cadangan.
+const WALL_CLOCK = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
 const formatTimestamp = (value) => {
+  if (typeof value === 'string' && WALL_CLOCK.test(value)) return value
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return value ?? ''
   const pad = (n) => String(n).padStart(2, '0')

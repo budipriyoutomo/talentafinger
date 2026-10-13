@@ -104,12 +104,11 @@ class ManualAttendanceController extends Controller
         }
 
         // Geofence: cocokkan ke outlet TERDEKAT milik karyawan yang punya koordinat
-        // (minimal satu dijamin ada oleh blockedReason()).
+        // yang masih aktif (minimal satu dijamin ada oleh blockedReason()).
         $lat = (float) $data['latitude'];
         $lng = (float) $data['longitude'];
 
-        $nearest = $employee->outlets
-            ->filter(fn (Outlet $o) => $o->hasCoordinates())
+        $nearest = $this->geofenceOutlets($employee)
             ->map(fn (Outlet $o) => [
                 'outlet' => $o,
                 'distance' => Geo::distanceMeters($lat, $lng, $o->latitude, $o->longitude),
@@ -224,10 +223,16 @@ class ManualAttendanceController extends Controller
             $employee === null => 'Akun Anda belum ditautkan ke data karyawan. Hubungi admin.',
             ! $employee->is_active => 'Data karyawan Anda nonaktif. Hubungi admin.',
             ! $employee->allow_manual_attendance => 'Anda belum diizinkan absen pakai foto. Hubungi admin/manager outlet.',
-            $employee->outlets->isEmpty() => 'Anda belum ditautkan ke outlet mana pun. Hubungi admin.',
-            ! $employee->outlets->contains(fn (Outlet $o) => $o->hasCoordinates()) => 'Outlet Anda belum punya titik koordinat. Hubungi admin.',
+            $employee->outlets->where('is_active', true)->isEmpty() => 'Anda belum ditautkan ke outlet aktif mana pun. Hubungi admin.',
+            $this->geofenceOutlets($employee)->isEmpty() => 'Outlet Anda belum punya titik koordinat. Hubungi admin.',
             default => null,
         };
+    }
+
+    /** Outlet karyawan yang bisa dipakai geofence: aktif DAN punya koordinat. */
+    private function geofenceOutlets(Employee $employee)
+    {
+        return $employee->outlets->filter(fn (Outlet $o) => $o->is_active && $o->hasCoordinates());
     }
 
     /**

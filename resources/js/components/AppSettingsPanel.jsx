@@ -1,10 +1,11 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
+import { router } from '@inertiajs/react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Settings as SettingsIcon, Plug, Cpu, SlidersHorizontal, Send, Clock, Save, Loader2, CheckCircle2 } from 'lucide-react'
+import { Settings as SettingsIcon, Plug, Cpu, SlidersHorizontal, Send, Clock, Save, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 
 function csrf() {
   return document.querySelector('meta[name="csrf-token"]').content
@@ -18,9 +19,9 @@ const GROUP_META = {
     description: 'Kredensial & endpoint untuk mengirim absensi ke Mekari Talenta.',
   },
   attendance: {
-    title: 'Pengiriman Absensi (Auto-kirim)',
+    title: 'Absensi (Auto-kirim & Absen Foto)',
     icon: Send,
-    description: 'Jadwal pengiriman otomatis absensi ke Talenta. Pengiriman manual tetap tersedia di halaman Logs.',
+    description: 'Jadwal pengiriman otomatis absensi ke Talenta (pengiriman manual tetap tersedia di halaman Logs), serta saklar & radius absen foto.',
   },
   machine: {
     title: 'Sinkronisasi Jam Mesin (Auto)',
@@ -51,8 +52,35 @@ export default function AppSettingsPanel({ groups = {} }) {
   )
 
   const [form, setForm] = useState(initial)
+  // Nilai terakhir yang tersimpan di server, pembanding untuk "belum disimpan".
+  const [saved, setSaved] = useState(initial)
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState(null)
+
+  const dirtyKeys = Object.keys(form).filter((k) => form[k] !== saved[k])
+  const dirty = dirtyKeys.length > 0
+
+  // Cegah perubahan hilang diam-diam: peringatkan saat menutup/refresh tab
+  // atau pindah halaman lewat menu, selama masih ada yang belum disimpan.
+  useEffect(() => {
+    if (!dirty) return
+    const onBeforeUnload = (e) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    const offBefore = router.on('before', (event) => {
+      // Reload parsial di halaman yang sama (mis. tab User & Role) tak dihitung.
+      if (event.detail.visit.url.pathname === window.location.pathname) return
+      if (!window.confirm('Ada pengaturan yang belum disimpan. Tinggalkan halaman ini?')) {
+        event.preventDefault()
+      }
+    })
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload)
+      offBefore()
+    }
+  }, [dirty])
 
   const setField = (key, value) => {
     setForm((f) => ({ ...f, [key]: value }))
@@ -86,6 +114,16 @@ export default function AppSettingsPanel({ groups = {} }) {
 
       toast.success('Pengaturan disimpan.')
       setSavedAt(Date.now())
+      // Password tak pernah dikembalikan ke browser: kosongkan lagi field-nya
+      // supaya kondisi form = kondisi tersimpan.
+      const next = { ...form }
+      Object.values(groups).forEach((items) =>
+        items.forEach((s) => {
+          if (s.type === 'password') next[s.key] = ''
+        })
+      )
+      setForm(next)
+      setSaved(next)
     } finally {
       setSaving(false)
     }
@@ -129,12 +167,18 @@ export default function AppSettingsPanel({ groups = {} }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Menempel di atas saat di-scroll: tombol Simpan selalu terlihat dari kartu mana pun. */}
+      <div className="sticky top-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-3 rounded-md bg-background/95 px-1 py-2 backdrop-blur">
         <p className="text-sm text-slate-500">
           Nilai di sini menimpa konfigurasi <code>.env</code>. Kosongkan sebuah field untuk kembali memakai nilai default <code>.env</code>.
         </p>
         <div className="flex items-center gap-3">
-          {savedAt && (
+          {dirty && (
+            <span className="flex items-center gap-1 text-sm text-amber-600 dark:text-amber-400">
+              <AlertCircle className="h-4 w-4" /> {dirtyKeys.length} perubahan belum disimpan
+            </span>
+          )}
+          {!dirty && savedAt && (
             <span className="flex items-center gap-1 text-sm text-emerald-600">
               <CheckCircle2 className="h-4 w-4" /> Tersimpan
             </span>
@@ -160,7 +204,12 @@ export default function AppSettingsPanel({ groups = {} }) {
             </CardHeader>
             <CardContent className="space-y-5">
               {groups[g].map((s) => (
-                <div key={s.key} className="grid gap-1.5 sm:grid-cols-3 sm:items-start sm:gap-4">
+                <div
+                  key={s.key}
+                  className={`grid gap-1.5 sm:grid-cols-3 sm:items-start sm:gap-4 ${
+                    dirtyKeys.includes(s.key) ? '-mx-2 rounded-md bg-amber-50 px-2 py-1 dark:bg-amber-950/40' : ''
+                  }`}
+                >
                   <div className="sm:pt-2">
                     <label className="text-sm font-medium text-slate-700 dark:text-slate-200 flex items-center gap-2">
                       {s.label}
