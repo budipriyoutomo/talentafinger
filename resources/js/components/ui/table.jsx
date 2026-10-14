@@ -17,7 +17,7 @@ const TableHeader = React.forwardRef(({ className, ...props }, ref) => (
   <thead
     ref={ref}
     data-slot="table-header"
-    className={cn('bg-muted/50 [&_tr]:border-b', className)}
+    className={cn('bg-muted/60 [&_tr]:border-b [&_tr]:hover:bg-transparent', className)}
     {...props}
   />
 ))
@@ -48,7 +48,7 @@ const TableRow = React.forwardRef(({ className, ...props }, ref) => (
     ref={ref}
     data-slot="table-row"
     className={cn(
-      'hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors',
+      'hover:bg-muted/40 data-[state=selected]:bg-primary/5 border-b transition-colors',
       className
     )}
     {...props}
@@ -61,7 +61,7 @@ const TableHead = React.forwardRef(({ className, ...props }, ref) => (
     ref={ref}
     data-slot="table-head"
     className={cn(
-      'text-foreground h-10 px-4 text-left align-middle font-medium whitespace-nowrap [&:has([role=checkbox])]:pr-0',
+      'text-muted-foreground h-10 px-4 text-left align-middle text-xs font-semibold tracking-wide uppercase whitespace-nowrap [&:has([role=checkbox])]:pr-0',
       className
     )}
     {...props}
@@ -73,7 +73,7 @@ const TableCell = React.forwardRef(({ className, ...props }, ref) => (
   <td
     ref={ref}
     data-slot="table-cell"
-    className={cn('p-4 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0', className)}
+    className={cn('px-4 py-3 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0', className)}
     {...props}
   />
 ))

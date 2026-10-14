@@ -83,18 +83,18 @@ export default function ManualReviewDialog({ log, canReview, onClose, onReviewed
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && !busy && onClose()}
     >
-      <div className="mt-10 w-full max-w-lg rounded-lg bg-white shadow-xl dark:bg-slate-900">
+      <div className="mt-10 w-full max-w-lg rounded-2xl border bg-card text-card-foreground shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 p-4 dark:border-slate-800">
           <div className="flex items-center gap-2">
             <Camera className="h-5 w-5 text-indigo-500" />
             <div>
-              <h3 className="font-semibold text-slate-900 dark:text-slate-50">
+              <h3 className="font-semibold text-foreground">
                 Absen Foto — {log.employee_name || 'Karyawan'}
               </h3>
-              <p className="text-xs text-slate-500">{log.timestamp_label}</p>
+              <p className="text-xs text-muted-foreground">{log.timestamp_label}</p>
             </div>
           </div>
           <Button variant="ghost" size="sm" onClick={onClose} aria-label="Tutup" disabled={!!busy}>
@@ -105,7 +105,7 @@ export default function ManualReviewDialog({ log, canReview, onClose, onReviewed
         <div className="space-y-4 p-4">
           <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-950">
             {photoFailed ? (
-              <p className="p-8 text-center text-sm text-slate-500">Foto tidak bisa dimuat.</p>
+              <p className="p-8 text-center text-sm text-muted-foreground">Foto tidak bisa dimuat.</p>
             ) : (
               <img
                 src={manual.photo_url}
@@ -117,22 +117,22 @@ export default function ManualReviewDialog({ log, canReview, onClose, onReviewed
           </div>
 
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-            <dt className="text-slate-500">Status</dt>
+            <dt className="text-muted-foreground">Status</dt>
             <dd>
               <Badge variant={STATUS_VARIANT[log.status_sync] || 'secondary'}>
                 {STATUS_LABEL[log.status_sync] || log.status_sync}
               </Badge>
             </dd>
-            <dt className="text-slate-500">Outlet</dt>
-            <dd className="text-slate-900 dark:text-slate-100">{manual.outlet_name || '-'}</dd>
-            <dt className="text-slate-500">Jarak dari outlet</dt>
-            <dd className="text-slate-900 dark:text-slate-100">
+            <dt className="text-muted-foreground">Outlet</dt>
+            <dd className="text-foreground">{manual.outlet_name || '-'}</dd>
+            <dt className="text-muted-foreground">Jarak dari outlet</dt>
+            <dd className="text-foreground">
               {manual.distance_meters != null ? `±${manual.distance_meters} m` : '-'}
               {manual.accuracy_meters != null && (
-                <span className="text-slate-500"> (akurasi GPS ±{manual.accuracy_meters} m)</span>
+                <span className="text-muted-foreground"> (akurasi GPS ±{manual.accuracy_meters} m)</span>
               )}
             </dd>
-            <dt className="text-slate-500">Lokasi</dt>
+            <dt className="text-muted-foreground">Lokasi</dt>
             <dd>
               {hasCoords ? (
                 <a
@@ -147,11 +147,11 @@ export default function ManualReviewDialog({ log, canReview, onClose, onReviewed
             </dd>
             {manual.reviewed_at && (
               <>
-                <dt className="text-slate-500">Direview</dt>
-                <dd className="text-slate-900 dark:text-slate-100">
+                <dt className="text-muted-foreground">Direview</dt>
+                <dd className="text-foreground">
                   {manual.reviewed_by || '-'}
                   {manual.review_note && (
-                    <span className="block text-slate-500">“{manual.review_note}”</span>
+                    <span className="block text-muted-foreground">“{manual.review_note}”</span>
                   )}
                 </dd>
               </>
@@ -160,8 +160,8 @@ export default function ManualReviewDialog({ log, canReview, onClose, onReviewed
 
           {reviewable && (
             <div className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
-              <label className="block text-sm font-medium text-slate-900 dark:text-slate-50" htmlFor="review-note">
-                Catatan <span className="font-normal text-slate-500">(wajib bila ditolak)</span>
+              <label className="block text-sm font-medium text-foreground" htmlFor="review-note">
+                Catatan <span className="font-normal text-muted-foreground">(wajib bila ditolak)</span>
               </label>
               <textarea
                 id="review-note"
@@ -182,7 +182,7 @@ export default function ManualReviewDialog({ log, canReview, onClose, onReviewed
                   Setujui
                 </Button>
               </div>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted-foreground">
                 Disetujui = masuk antrean kirim ke Talenta (auto-send / Kirim Semua Pending).
               </p>
             </div>

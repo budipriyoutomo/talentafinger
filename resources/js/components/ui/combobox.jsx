@@ -82,7 +82,7 @@ export function Combobox({
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          'border-input flex h-9 w-full items-center justify-between gap-2 rounded-md border bg-transparent px-3 py-1 text-left text-sm shadow-xs outline-none',
+          'border-input flex h-9 w-full items-center justify-between gap-2 rounded-lg border bg-card px-3 py-1 text-left text-sm shadow-xs outline-none',
           'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]'
         )}
       >
@@ -105,7 +105,7 @@ export function Combobox({
       </button>
 
       {open && (
-        <div className="bg-popover text-popover-foreground absolute z-40 mt-1 w-full min-w-64 rounded-md border shadow-md">
+        <div className="bg-popover text-popover-foreground absolute z-40 mt-1 w-full min-w-64 overflow-hidden rounded-lg border shadow-lg">
           <div className="flex items-center gap-2 border-b px-3">
             <Search className="text-muted-foreground h-4 w-4 shrink-0" />
             <input

@@ -264,7 +264,7 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-muted-foreground">
           Kelola akun pengguna aplikasi beserta perannya (role).
         </p>
         <Button onClick={showForm ? closeForm : openCreate} className="gap-2">
@@ -287,7 +287,7 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Nama</label>
+                  <label className="text-sm font-medium text-foreground">Nama</label>
                   <Input
                     type="text"
                     required
@@ -297,7 +297,7 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Email</label>
+                  <label className="text-sm font-medium text-foreground">Email</label>
                   <Input
                     type="email"
                     required
@@ -310,8 +310,8 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
-                    Password {editingId && <span className="text-slate-400">(opsional)</span>}
+                  <label className="text-sm font-medium text-foreground">
+                    Password {editingId && <span className="text-muted-foreground">(opsional)</span>}
                   </label>
                   <Input
                     type="password"
@@ -323,7 +323,7 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Role</label>
+                  <label className="text-sm font-medium text-foreground">Role</label>
                   <Select
                     value={formData.role}
                     onChange={(e) => setFormData({ ...formData, role: e.target.value })}
@@ -332,13 +332,13 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
                       <option key={r} value={r}>{roleLabel(r)}</option>
                     ))}
                   </Select>
-                  <p className="text-xs text-slate-500">{ROLE_META[formData.role]?.desc}</p>
+                  <p className="text-xs text-muted-foreground">{ROLE_META[formData.role]?.desc}</p>
                 </div>
               </div>
 
               {isEmployeeRole && (
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Karyawan</label>
+                  <label className="text-sm font-medium text-foreground">Karyawan</label>
                   <Select
                     required
                     value={formData.employee_id}
@@ -354,7 +354,7 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
                       </option>
                     ))}
                   </Select>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-muted-foreground">
                     Karyawan juga harus diizinkan absen foto di halaman Employees, dan outletnya
                     harus punya titik koordinat.
                   </p>
@@ -366,10 +366,10 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
                   jadi outlet baru di brand itu langsung ikut, tanpa perlu diedit. */}
               {needsScope && (
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                  <label className="text-sm font-medium text-foreground">
                     Wewenang Data
                   </label>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-muted-foreground">
                     Pilih Company / Brand / Outlet yang boleh diakses. Mencentang Company
                     mencakup seluruh Brand &amp; Outlet di bawahnya. Tanpa satu pun centang,
                     user ini tidak akan melihat data apa pun.
@@ -377,7 +377,7 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
 
                   <div className="max-h-72 space-y-3 overflow-y-auto rounded-md border border-slate-200 p-3 dark:border-slate-700">
                     {companies.length === 0 && (
-                      <p className="text-sm text-slate-400">
+                      <p className="text-sm text-muted-foreground">
                         Belum ada struktur organisasi. Buat Company / Brand / Outlet dulu di halaman Employees.
                       </p>
                     )}
@@ -387,7 +387,7 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
 
                       return (
                         <div key={company.id} className="space-y-1">
-                          <label className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-50">
+                          <label className="flex items-center gap-2 text-sm font-semibold text-foreground">
                             <input
                               type="checkbox"
                               className="h-4 w-4"
@@ -414,7 +414,7 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
                                   />
                                   {brand.name}
                                   {companyChecked && (
-                                    <span className="text-[11px] text-slate-400">(ikut company)</span>
+                                    <span className="text-[11px] text-muted-foreground">(ikut company)</span>
                                   )}
                                 </label>
 
@@ -435,7 +435,7 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
                                       />
                                       {outlet.name}
                                       {brandChecked && (
-                                        <span className="text-[11px] text-slate-400">
+                                        <span className="text-[11px] text-muted-foreground">
                                           (ikut {companyChecked ? 'company' : 'brand'})
                                         </span>
                                       )}

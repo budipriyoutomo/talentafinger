@@ -40,12 +40,12 @@ function CapacityRow({ icon: Icon, label, used, max }) {
     <div className="space-y-1">
       <div className="flex items-center justify-between text-xs">
         <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-          <Icon className="h-3.5 w-3.5 text-slate-400" />
+          <Icon className="h-3.5 w-3.5 text-muted-foreground" />
           {label}
         </span>
         <span className="font-mono text-slate-700 dark:text-slate-200">
           {used ?? '–'}{hasMax ? ` / ${max}` : ''}
-          {hasMax && <span className="ml-1 text-slate-400">({pct}%)</span>}
+          {hasMax && <span className="ml-1 text-muted-foreground">({pct}%)</span>}
         </span>
       </div>
       {hasMax && (
@@ -327,7 +327,7 @@ export default function Machines({ machines = [], companies = [] }) {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                    <label className="text-sm font-medium text-foreground">
                       Serial Number
                     </label>
                     <Input
@@ -339,7 +339,7 @@ export default function Machines({ machines = [], companies = [] }) {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                    <label className="text-sm font-medium text-foreground">
                       Name
                     </label>
                     <Input
@@ -351,7 +351,7 @@ export default function Machines({ machines = [], companies = [] }) {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                    <label className="text-sm font-medium text-foreground">
                       Location
                     </label>
                     <Input
@@ -366,7 +366,7 @@ export default function Machines({ machines = [], companies = [] }) {
                     hanya outlet_id; dua dropdown di atasnya cuma penyaring. */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                    <label className="text-sm font-medium text-foreground">
                       Company
                     </label>
                     <Select
@@ -383,7 +383,7 @@ export default function Machines({ machines = [], companies = [] }) {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                    <label className="text-sm font-medium text-foreground">
                       Brand
                     </label>
                     <Select
@@ -400,8 +400,8 @@ export default function Machines({ machines = [], companies = [] }) {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
-                      Outlet <span className="text-xs text-slate-400">— menentukan hak akses per-outlet</span>
+                    <label className="text-sm font-medium text-foreground">
+                      Outlet <span className="text-xs text-muted-foreground">— menentukan hak akses per-outlet</span>
                     </label>
                     <Select
                       value={formData.outlet_id}
@@ -417,8 +417,8 @@ export default function Machines({ machines = [], companies = [] }) {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
-                      IP Address (LAN) <span className="text-xs text-slate-400">— untuk sync sidik jari</span>
+                    <label className="text-sm font-medium text-foreground">
+                      IP Address (LAN) <span className="text-xs text-muted-foreground">— untuk sync sidik jari</span>
                     </label>
                     <Input
                       type="text"
@@ -428,7 +428,7 @@ export default function Machines({ machines = [], companies = [] }) {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                    <label className="text-sm font-medium text-foreground">
                       SDK Port
                     </label>
                     <Input
@@ -439,7 +439,7 @@ export default function Machines({ machines = [], companies = [] }) {
                     />
                   </div>
                 </div>
-                <label className="flex items-center gap-2 text-sm font-medium text-slate-900 dark:text-slate-50">
+                <label className="flex items-center gap-2 text-sm font-medium text-foreground">
                   <input
                     type="checkbox"
                     className="h-4 w-4"
@@ -464,10 +464,10 @@ export default function Machines({ machines = [], companies = [] }) {
           {machines.length === 0 ? (
             <Card className="text-center py-12">
               <CardContent className="flex flex-col items-center gap-4">
-                <Cpu className="h-12 w-12 text-slate-400" />
+                <Cpu className="h-12 w-12 text-muted-foreground" />
                 <div>
-                  <h3 className="font-semibold text-slate-900 dark:text-slate-50">No machines registered</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                  <h3 className="font-semibold text-foreground">No machines registered</h3>
+                  <p className="text-sm text-muted-foreground">
                     Add your first fingerprint machine to get started
                   </p>
                 </div>
@@ -480,7 +480,7 @@ export default function Machines({ machines = [], companies = [] }) {
                   <div className="flex justify-between items-start gap-4">
                     <div className="space-y-2 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">{machine.name}</h3>
+                        <h3 className="text-lg font-semibold text-foreground">{machine.name}</h3>
                         <Badge variant={machine.is_online ? 'success' : 'secondary'}>
                           ADMS: {machine.is_online ? 'online' : 'offline'}
                         </Badge>
@@ -513,8 +513,8 @@ export default function Machines({ machines = [], companies = [] }) {
                         {!machine.is_active && <Badge variant="destructive">nonaktif</Badge>}
                       </div>
                       <p className="text-sm text-slate-600 dark:text-slate-400">Serial: {machine.serial_number}</p>
-                      <p className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
-                        <Store className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <Store className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                         {machine.outlet_name
                           ? [machine.company_name, machine.brand_name, machine.outlet_name]
                               .filter(Boolean)
@@ -522,15 +522,15 @@ export default function Machines({ machines = [], companies = [] }) {
                           : <span className="text-amber-600">belum ditempatkan di outlet</span>}
                       </p>
                       {machine.location && (
-                        <p className="text-sm text-slate-500 dark:text-slate-400">Location: {machine.location}</p>
+                        <p className="text-sm text-muted-foreground">Location: {machine.location}</p>
                       )}
-                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                      <p className="text-sm text-muted-foreground">
                         IP: {machine.ip_address
                           ? <span className="font-mono">{machine.ip_address}:{machine.sdk_port || 4370}</span>
                           : <span className="text-amber-600">belum diisi (sync sidik jari nonaktif)</span>}
                       </p>
                       {machine.last_seen_at && (
-                        <p className="text-xs text-slate-400 dark:text-slate-500">
+                        <p className="text-xs text-muted-foreground/80">
                           Last seen: {new Date(machine.last_seen_at).toLocaleString()}
                         </p>
                       )}
@@ -538,11 +538,11 @@ export default function Machines({ machines = [], companies = [] }) {
                       {/* Statistik per mesin */}
                       <div className="flex flex-wrap gap-4 pt-2">
                         <div className="flex items-center gap-1.5 text-sm text-slate-600 dark:text-slate-300">
-                          <FileClock className="h-4 w-4 text-slate-400" />
+                          <FileClock className="h-4 w-4 text-muted-foreground" />
                           <span className="font-semibold">{machine.logs_count}</span> log
                         </div>
                         {machine.last_log_at && (
-                          <div className="text-sm text-slate-500 dark:text-slate-400">
+                          <div className="text-sm text-muted-foreground">
                             Log terakhir: {new Date(machine.last_log_at).toLocaleString()}
                           </div>
                         )}
@@ -574,7 +574,7 @@ export default function Machines({ machines = [], companies = [] }) {
                           }
                           if (cap.loading) {
                             return (
-                              <div className="flex items-center gap-2 text-sm text-slate-500">
+                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                 <Loader2 className="h-4 w-4 animate-spin" />
                                 Membaca kapasitas dari mesin…
                               </div>
@@ -596,7 +596,7 @@ export default function Machines({ machines = [], companies = [] }) {
                             <div className="space-y-3 rounded-lg border border-slate-200 dark:border-slate-700 p-3 max-w-md">
                               <div className="flex items-center justify-between">
                                 <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-200">
-                                  <Gauge className="h-4 w-4 text-slate-400" />
+                                  <Gauge className="h-4 w-4 text-muted-foreground" />
                                   Kapasitas Mesin
                                 </span>
                                 <Button onClick={() => loadCapacity(machine)} variant="ghost" size="sm" className="gap-1.5 h-7 px-2">
@@ -610,7 +610,7 @@ export default function Machines({ machines = [], companies = [] }) {
                               <CapacityRow icon={Database} label="Log Presensi" used={d.records} max={d.records_cap} />
                               {canManage && (
                                 <div className="flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800 pt-2">
-                                  <span className="text-[11px] text-slate-400">
+                                  <span className="text-[11px] text-muted-foreground">
                                     Bebaskan kapasitas log mesin
                                   </span>
                                   <Button
@@ -630,7 +630,7 @@ export default function Machines({ machines = [], companies = [] }) {
                                 </div>
                               )}
                               {(d.device_name || d.firmware) && (
-                                <p className="text-[11px] text-slate-400 pt-1">
+                                <p className="text-[11px] text-muted-foreground pt-1">
                                   {d.device_name}{d.device_name && d.firmware ? ' · ' : ''}
                                   {d.firmware && `firmware ${d.firmware}`}
                                 </p>

@@ -33,21 +33,23 @@ export default function Settings({ groups = {}, users = [], roles = [], companie
       <Head title="Pengaturan" />
 
       <div className="space-y-6">
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-muted-foreground">
           Konfigurasi aplikasi serta manajemen user &amp; role.
         </p>
 
         {/* Tab switcher */}
-        <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800">
+        <div className="inline-flex flex-wrap gap-1 rounded-xl border bg-muted/50 p-1">
           {tabs.map(({ key, label, icon: Icon }) => (
             <Button
               key={key}
               variant="ghost"
+              size="sm"
               onClick={() => setTab(key)}
-              className={`gap-2 rounded-none border-b-2 ${
+              aria-pressed={activeTab === key}
+              className={`gap-2 rounded-lg ${
                 activeTab === key
-                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
-                  : 'border-transparent text-slate-500'
+                  ? 'bg-card text-primary shadow-sm hover:bg-card hover:text-primary'
+                  : 'text-muted-foreground hover:bg-transparent hover:text-foreground'
               }`}
             >
               <Icon className="h-4 w-4" />

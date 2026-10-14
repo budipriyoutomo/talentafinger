@@ -35,7 +35,7 @@ export default function EmployeeManagement({ employees = [], machines = [], comp
 
       <div className="space-y-6">
         {/* Tab switcher */}
-        <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800">
+        <div className="flex gap-2 border-b border-border">
           {tabs.map(({ key, label, icon: Icon }) => (
             <Button
               key={key}
@@ -44,7 +44,7 @@ export default function EmployeeManagement({ employees = [], machines = [], comp
               className={`gap-2 rounded-none border-b-2 ${
                 activeTab === key
                   ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
-                  : 'border-transparent text-slate-500'
+                  : 'border-transparent text-muted-foreground'
               }`}
             >
               <Icon className="h-4 w-4" />

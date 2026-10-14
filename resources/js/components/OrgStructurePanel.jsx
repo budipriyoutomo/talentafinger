@@ -134,7 +134,7 @@ export default function OrgStructurePanel({ companies = [] }) {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-muted-foreground">
           Hierarki penempatan karyawan: <strong>Company → Brand → Outlet</strong>.
         </p>
         <Button onClick={addCompany} className="gap-2">
@@ -145,7 +145,7 @@ export default function OrgStructurePanel({ companies = [] }) {
 
       {companies.length === 0 && (
         <Card>
-          <CardContent className="py-10 text-center text-slate-500">
+          <CardContent className="py-10 text-center text-muted-foreground">
             Belum ada company. Klik “Tambah Company” untuk mulai.
           </CardContent>
         </Card>
@@ -175,10 +175,10 @@ export default function OrgStructurePanel({ companies = [] }) {
           </CardHeader>
           <CardContent className="space-y-4">
             {(company.brands ?? []).length === 0 && (
-              <p className="text-sm text-slate-400 italic">Belum ada brand.</p>
+              <p className="text-sm text-muted-foreground italic">Belum ada brand.</p>
             )}
             {(company.brands ?? []).map((brand) => (
-              <div key={brand.id} className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
+              <div key={brand.id} className="rounded-lg border border-border p-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 font-medium">
                     <Tag className="h-4 w-4 text-emerald-500" />
@@ -202,7 +202,7 @@ export default function OrgStructurePanel({ companies = [] }) {
                     {brand.outlets.map((outlet) => (
                       <li key={outlet.id} className="flex items-center justify-between text-sm">
                         <span className="flex items-center gap-2">
-                          <Store className="h-3.5 w-3.5 text-slate-400" />
+                          <Store className="h-3.5 w-3.5 text-muted-foreground" />
                           {outlet.name}
                           {outlet.latitude != null && outlet.longitude != null ? (
                             <a
@@ -214,7 +214,7 @@ export default function OrgStructurePanel({ companies = [] }) {
                               <Badge variant="success" className="gap-1"><MapPin className="h-3 w-3" />titik</Badge>
                             </a>
                           ) : (
-                            <span className="text-xs text-slate-400" title="Belum ada titik koordinat; absen foto tak bisa dipakai di outlet ini">
+                            <span className="text-xs text-muted-foreground" title="Belum ada titik koordinat; absen foto tak bisa dipakai di outlet ini">
                               tanpa titik
                             </span>
                           )}

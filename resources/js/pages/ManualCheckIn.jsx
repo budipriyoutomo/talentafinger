@@ -135,7 +135,7 @@ export default function ManualCheckIn({ employee, blocked_reason, radius_meters,
   const logout = () => router.post('/logout')
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen bg-background">
       <Head title="Absen Foto" />
 
       <header className="sticky top-0 z-10 border-b border-border bg-card">

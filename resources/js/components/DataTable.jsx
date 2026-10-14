@@ -7,7 +7,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table'
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Inbox, Search } from 'lucide-react'
 import {
   Table,
   TableBody,
@@ -73,17 +73,18 @@ export function DataTable({
   return (
     <div className="w-full space-y-4">
       {/* Global Filter */}
-      <div className="flex items-center gap-2">
+      <div className="relative max-w-sm">
+        <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
         <Input
           placeholder={filterPlaceholder}
           value={globalFilter}
           onChange={(event) => setGlobalFilter(event.target.value)}
-          className="max-w-sm"
+          className="pl-9"
         />
       </div>
 
       {/* Table */}
-      <div className="rounded-md border border-slate-200 dark:border-slate-800">
+      <div className="bg-card overflow-hidden rounded-xl border shadow-xs">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -94,13 +95,14 @@ export function DataTable({
                     onClick={header.column.getToggleSortingHandler()}
                     className={header.column.getCanSort() ? 'cursor-pointer select-none' : ''}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       {flexRender(header.column.columnDef.header, header.getContext())}
-                      {header.column.getIsSorted() && (
-                        <span className="ml-2">
-                          {header.column.getIsSorted() === 'desc' ? '↓' : '↑'}
-                        </span>
-                      )}
+                      {header.column.getIsSorted() &&
+                        (header.column.getIsSorted() === 'desc' ? (
+                          <ArrowDown className="text-primary h-3.5 w-3.5" />
+                        ) : (
+                          <ArrowUp className="text-primary h-3.5 w-3.5" />
+                        ))}
                     </div>
                   </TableHead>
                 ))}
@@ -120,8 +122,11 @@ export function DataTable({
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
-                  No results.
+                <TableCell colSpan={columns.length} className="h-32 text-center">
+                  <div className="text-muted-foreground flex flex-col items-center gap-2">
+                    <Inbox className="h-8 w-8 opacity-40" />
+                    <span className="text-sm">Tidak ada data.</span>
+                  </div>
                 </TableCell>
               </TableRow>
             )}
@@ -131,12 +136,12 @@ export function DataTable({
 
       {/* Pagination */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex-1 text-sm text-slate-500 dark:text-slate-400">
+        <div className="text-muted-foreground flex-1 text-sm">
           {table.getFilteredSelectedRowModel().rows.length} of{' '}
           {table.getFilteredRowModel().rows.length} row(s) selected.
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center gap-1.5">
           <Button
             variant="outline"
             size="sm"
@@ -155,7 +160,7 @@ export function DataTable({
           </Button>
 
           <div className="flex items-center gap-1">
-            <span className="text-sm font-medium">
+            <span className="px-2 text-sm font-medium tabular-nums">
               Page {table.getState().pagination.pageIndex + 1} of{' '}
               {table.getPageCount()}
             </span>
@@ -179,7 +184,7 @@ export function DataTable({
           </Button>
         </div>
 
-        <div className="flex items-center gap-2 text-sm">
+        <div className="text-muted-foreground flex items-center gap-2 text-sm">
           <span>Rows per page:</span>
           <select
             value={table.getState().pagination.pageSize}
@@ -188,7 +193,7 @@ export function DataTable({
               if (onPageSizeChange) onPageSizeChange(size)
               else table.setPageSize(size)
             }}
-            className="rounded border border-slate-200 px-2 py-1 dark:border-slate-800 dark:bg-slate-950"
+            className="border-input bg-card text-foreground h-8 cursor-pointer rounded-lg border px-2 shadow-xs"
           >
             {pageSizeOptions.map((size) => (
               <option key={size} value={size}>

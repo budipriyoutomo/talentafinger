@@ -420,7 +420,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
           const machine = machines.find(m => m.id === log.machine_id)
           return (
             <div className="flex items-center gap-1.5 text-sm">
-              <Cpu className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+              <Cpu className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               <span>{machine?.name || 'Unknown'}</span>
             </div>
           )
@@ -485,7 +485,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
             </Button>
           )
           if (UNSENDABLE.includes(status) || !canSend) {
-            return photoButton || <span className="text-xs text-slate-400">-</span>
+            return photoButton || <span className="text-xs text-muted-foreground">-</span>
           }
           // Sudah terkirim = tetap bisa dikirim ulang, tapi tombolnya dibedakan
           // (outline + konfirmasi) supaya tak tertukar dengan kirim biasa.
@@ -587,7 +587,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         </div>
 
         {/* Tab switcher: Semua Log vs Gagal */}
-        <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800">
+        <div className="flex gap-2 border-b border-border">
           {TABS.map(({ key, label, icon: Icon }) => (
             <Button
               key={key}
@@ -596,7 +596,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
               className={`gap-2 rounded-none border-b-2 ${
                 activeTab === key
                   ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
-                  : 'border-transparent text-slate-500'
+                  : 'border-transparent text-muted-foreground'
               }`}
             >
               <Icon className="h-4 w-4" />
@@ -664,7 +664,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
               {showFilters && (
               <div className="flex flex-col sm:flex-row sm:items-end gap-3">
                 <div className="space-y-1.5 sm:w-56">
-                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                  <label className="text-sm font-medium text-foreground">
                     Filter by Machine
                   </label>
                   <Select
@@ -680,7 +680,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
                   </Select>
                 </div>
                 <div className="space-y-1.5 sm:w-40">
-                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                  <label className="text-sm font-medium text-foreground">
                     Sumber
                   </label>
                   <Select
@@ -693,7 +693,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
                   </Select>
                 </div>
                 <div className="space-y-1.5 sm:w-48">
-                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                  <label className="text-sm font-medium text-foreground">
                     Brand
                   </label>
                   <Select
@@ -709,7 +709,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
                   </Select>
                 </div>
                 <div className="space-y-1.5 sm:w-48">
-                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                  <label className="text-sm font-medium text-foreground">
                     Outlet
                   </label>
                   <Select
@@ -725,7 +725,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                  <label className="text-sm font-medium text-foreground">
                     Dari Tanggal
                   </label>
                   <Input
@@ -736,7 +736,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                  <label className="text-sm font-medium text-foreground">
                     Sampai Tanggal
                   </label>
                   <Input
@@ -802,7 +802,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
 
             {/* Paginasi server-side. Kotak pencarian di atas hanya menyaring halaman ini. */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4">
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-muted-foreground">
                 {pagination.total > 0
                   ? `Menampilkan ${pagination.from}–${pagination.to} dari ${pagination.total} log`
                   : 'Tidak ada log'}
@@ -818,7 +818,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
                   >
                     <ChevronLeft className="h-4 w-4" /> Sebelumnya
                   </Button>
-                  <span className="text-sm text-slate-500">
+                  <span className="text-sm text-muted-foreground">
                     Hal {pagination.current_page} / {pagination.last_page}
                   </span>
                   <Button
@@ -856,13 +856,13 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.total}</div>
-              <p className="text-xs text-slate-400">semua yang cocok filter</p>
+              <p className="text-xs text-muted-foreground">semua yang cocok filter</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Sent <span className="text-xs font-normal text-slate-400">(hal. ini)</span></CardTitle>
+              <CardTitle className="text-sm font-medium">Sent <span className="text-xs font-normal text-muted-foreground">(hal. ini)</span></CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">{stats.sent}</div>

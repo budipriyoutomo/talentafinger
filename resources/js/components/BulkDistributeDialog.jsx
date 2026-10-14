@@ -86,12 +86,12 @@ export default function BulkDistributeDialog({ employees = [], machines = [], on
     : 0
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
-      <div className="mt-10 w-full max-w-2xl rounded-lg bg-white dark:bg-slate-900 shadow-xl">
-        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 p-4">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-sm">
+      <div className="mt-10 w-full max-w-2xl rounded-2xl border bg-card text-card-foreground shadow-2xl">
+        <div className="flex items-center justify-between border-b border-border p-4">
           <div className="flex items-center gap-2">
             <Send className="h-5 w-5 text-indigo-500" />
-            <h3 className="font-semibold text-slate-900 dark:text-slate-50">
+            <h3 className="font-semibold text-foreground">
               Sebar Massal — {employees.length} karyawan
             </h3>
           </div>
@@ -104,7 +104,7 @@ export default function BulkDistributeDialog({ employees = [], machines = [], on
             {employees.map((e) => (
               <span key={e.id} className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 text-xs">
                 {e.name}
-                <span className="text-slate-500">· {e.fingerprints_count ?? 0} jari</span>
+                <span className="text-muted-foreground">· {e.fingerprints_count ?? 0} jari</span>
               </span>
             ))}
           </div>
@@ -120,8 +120,8 @@ export default function BulkDistributeDialog({ employees = [], machines = [], on
                   <label key={m.id} className="flex items-center gap-3 p-2.5 cursor-pointer">
                     <input type="checkbox" className="h-4 w-4" checked={!!targets[m.id]} onChange={() => toggleTarget(m.id)} disabled={running} />
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-slate-900 dark:text-slate-50">{m.name}</div>
-                      <div className="text-xs text-slate-500 font-mono">{m.ip_address}:{m.sdk_port || 4370}</div>
+                      <div className="text-sm font-medium text-foreground">{m.name}</div>
+                      <div className="text-xs text-muted-foreground font-mono">{m.ip_address}:{m.sdk_port || 4370}</div>
                     </div>
                   </label>
                 ))}
@@ -137,12 +137,12 @@ export default function BulkDistributeDialog({ employees = [], machines = [], on
             <Button variant="outline" onClick={onClose}>Tutup</Button>
           </div>
           {running && (
-            <p className="text-xs text-slate-500">Berjalan di background — boleh tutup, proses tetap lanjut.</p>
+            <p className="text-xs text-muted-foreground">Berjalan di background — boleh tutup, proses tetap lanjut.</p>
           )}
 
           {/* Progres & hasil */}
           {job && (
-            <div className="space-y-3 border-t border-slate-200 dark:border-slate-800 pt-3">
+            <div className="space-y-3 border-t border-border pt-3">
               {job.status === 'failed' ? (
                 <p className="text-sm font-medium text-red-600">Job gagal: {job.error || 'tidak diketahui'}</p>
               ) : job.summary ? (
@@ -175,7 +175,7 @@ export default function BulkDistributeDialog({ employees = [], machines = [], on
                           <div key={j} className="text-xs flex items-center gap-2">
                             <span className={r.ok ? 'text-green-600' : 'text-red-600'}>{r.ok ? '✓' : '✗'}</span>
                             <span className="font-medium">{r.machine}</span>
-                            <span className="text-slate-500">
+                            <span className="text-muted-foreground">
                               {r.ok ? `${r.installed} jari (PIN ${r.pin})` : (r.error || 'gagal')}
                             </span>
                           </div>

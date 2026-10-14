@@ -4,7 +4,7 @@ import Layout from '../layouts/Layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { usePermissions } from '@/lib/permissions'
-import { Clock, CheckCircle2, AlertCircle, Zap, Camera } from 'lucide-react'
+import { Clock, CheckCircle2, AlertCircle, Zap, Camera, ArrowRight, Cpu, MapPin } from 'lucide-react'
 
 export default function Dashboard({ machines = [], stats = {} }) {
   const { can } = usePermissions()
@@ -27,112 +27,172 @@ export default function Dashboard({ machines = [], stats = {} }) {
     return () => clearInterval(interval)
   }, [])
 
-  const StatCard = ({ icon: Icon, label, value, color, href }) => {
+  const StatCard = ({ icon: Icon, label, value, tone, href, hint }) => {
     const card = (
-      <Card className={href ? 'transition-colors hover:bg-slate-50 dark:hover:bg-slate-900' : ''}>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">{label}</CardTitle>
-          <Icon className={`h-4 w-4 ${color}`} />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{value}</div>
+      <Card className={`h-full gap-0 py-5 ${href ? 'transition-all hover:-translate-y-0.5 hover:shadow-md' : ''}`}>
+        <CardContent className="flex items-start justify-between gap-4 px-5">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-muted-foreground">{label}</p>
+            <p className="mt-2 text-3xl font-bold tracking-tight tabular-nums">{value}</p>
+            {hint && <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">{hint}</p>}
+          </div>
+          <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${tone}`}>
+            <Icon className="h-5 w-5" />
+          </div>
         </CardContent>
       </Card>
     )
-    return href ? <Link href={href} className="block">{card}</Link> : card
+    return href ? (
+      <Link href={href} className="block rounded-xl focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none">
+        {card}
+      </Link>
+    ) : card
   }
 
   // null dari server = angka tak bisa dihitung untuk driver queue ini -> tampil "—".
-  const QueueStat = ({ label, value, accent, color }) => (
-    <div className={`border-l-4 ${accent} pl-4`}>
-      <p className="text-sm text-slate-500 dark:text-slate-400">{label}</p>
-      <p className={`text-2xl font-bold ${color}`}>{value ?? '—'}</p>
+  const QueueStat = ({ label, value, dot, color }) => (
+    <div className="rounded-xl border bg-muted/30 p-4">
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <span className={`h-2 w-2 rounded-full ${dot}`} />
+        {label}
+      </p>
+      <p className={`mt-2 text-2xl font-bold tabular-nums ${color}`}>{value ?? '—'}</p>
     </div>
   )
+
+  const onlineCount = machineList.filter(m => m.status === 'online').length
 
   return (
     <Layout>
       <Head title="Dashboard" />
 
       <div className="space-y-6">
-        <div className="flex justify-end">
-          <div className="text-sm text-slate-500 dark:text-slate-400">
-            Last updated: {new Date().toLocaleTimeString()}
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight">Ringkasan Hari Ini</h2>
+            <p className="text-sm text-muted-foreground">Pantau mesin absensi dan pengiriman data ke Talenta.</p>
+          </div>
+          <div className="flex items-center gap-2 rounded-full border bg-card px-3 py-1 text-xs text-muted-foreground shadow-xs">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+            </span>
+            Live · diperbarui {new Date().toLocaleTimeString()}
           </div>
         </div>
 
         {can('attendance.review') && stats_?.review_pending > 0 && (
           <Link
             href="/attendance-logs?status=pending_review"
-            className="flex items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 transition-colors hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-200 dark:hover:bg-blue-900"
+            className="group flex items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800 transition-colors hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200 dark:hover:bg-indigo-500/20"
           >
-            <span className="flex items-center gap-2">
-              <Camera className="h-4 w-4" />
-              {stats_.review_pending} absen foto menunggu persetujuan Anda
+            <span className="flex items-center gap-3">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-500/15">
+                <Camera className="h-4 w-4" />
+              </span>
+              <span>
+                <span className="font-semibold">{stats_.review_pending} absen foto</span> menunggu persetujuan Anda
+              </span>
             </span>
-            <span className="font-medium">Review →</span>
+            <span className="flex shrink-0 items-center gap-1 font-medium">
+              Review <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+            </span>
           </Link>
         )}
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
             icon={Zap}
             label="Online Machines"
-            value={machineList.filter(m => m.status === 'online').length}
-            color="text-green-600"
+            value={onlineCount}
+            hint={`dari ${machineList.length} mesin terdaftar`}
+            tone="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
           />
           <StatCard
             icon={Clock}
             label="Logs Today"
             value={stats_?.logs_today || 0}
-            color="text-blue-600"
+            hint="scan masuk hari ini"
+            tone="bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400"
           />
           <StatCard
             icon={CheckCircle2}
             label="Sent"
             value={stats_?.sent_count || 0}
-            color="text-green-600"
+            hint="terkirim ke Talenta"
+            tone="bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400"
           />
           <StatCard
             icon={AlertCircle}
             label="Failed"
             value={stats_?.failed_count || 0}
-            color="text-red-600"
+            hint={<>Lihat detail <ArrowRight className="h-3 w-3" /></>}
+            tone="bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-400"
             href="/attendance-logs?status=failed"
           />
         </div>
 
         {/* Device Heartbeat */}
         <Card>
-          <CardHeader>
-            <CardTitle>Device Heartbeat Monitor</CardTitle>
-            <CardDescription>Real-time status of all registered machines</CardDescription>
+          <CardHeader className="flex flex-row items-start justify-between gap-4">
+            <div className="space-y-1.5">
+              <CardTitle>Device Heartbeat Monitor</CardTitle>
+              <CardDescription>Real-time status of all registered machines</CardDescription>
+            </div>
+            <Badge variant="outline" className="shrink-0 tabular-nums">
+              {onlineCount}/{machineList.length} online
+            </Badge>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {machineList.map(machine => (
-                <Card key={machine.id} className="border-slate-200 dark:border-slate-800">
-                  <CardContent className="pt-6">
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <h3 className="font-semibold text-slate-900 dark:text-slate-50">{machine.name}</h3>
-                        <p className="text-sm text-slate-500 dark:text-slate-400">{machine.serial_number}</p>
-                        <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{machine.location}</p>
+            {machineList.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-10 text-muted-foreground">
+                <Cpu className="h-8 w-8 opacity-40" />
+                <p className="text-sm">Belum ada mesin terdaftar.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {machineList.map(machine => {
+                  const online = machine.status === 'online'
+                  return (
+                    <div
+                      key={machine.id}
+                      className="flex items-start gap-3 rounded-xl border bg-muted/20 p-4 transition-colors hover:bg-muted/40"
+                    >
+                      <div
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+                          online
+                            ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400'
+                            : 'bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-400'
+                        }`}
+                      >
+                        <Cpu className="h-5 w-5" />
                       </div>
-                      <Badge variant={machine.status === 'online' ? 'success' : 'destructive'}>
-                        {machine.status}
-                      </Badge>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="truncate font-semibold">{machine.name}</h3>
+                          <Badge variant={online ? 'success' : 'destructive'}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${online ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                            {machine.status}
+                          </Badge>
+                        </div>
+                        <p className="truncate font-mono text-xs text-muted-foreground">{machine.serial_number}</p>
+                        {machine.location && (
+                          <p className="mt-1 flex items-center gap-1 truncate text-xs text-muted-foreground">
+                            <MapPin className="h-3 w-3 shrink-0" /> {machine.location}
+                          </p>
+                        )}
+                        {machine.last_seen_at && (
+                          <p className="mt-1 text-xs text-muted-foreground/80">
+                            Last seen: {new Date(machine.last_seen_at).toLocaleString()}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    {machine.last_seen_at && (
-                      <p className="text-xs text-slate-400 dark:text-slate-500">
-                        Last seen: {new Date(machine.last_seen_at).toLocaleString()}
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                  )
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -145,30 +205,30 @@ export default function Dashboard({ machines = [], stats = {} }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <QueueStat
                 label="Absensi pending"
                 value={stats_?.queue_pending}
-                accent="border-yellow-500"
-                color="text-yellow-600"
+                dot="bg-amber-500"
+                color="text-amber-600 dark:text-amber-400"
               />
               <QueueStat
                 label="Job menunggu"
                 value={stats_?.jobs_waiting}
-                accent="border-slate-400"
-                color="text-slate-700 dark:text-slate-200"
+                dot="bg-slate-400"
+                color="text-foreground"
               />
               <QueueStat
                 label="Job diproses"
                 value={stats_?.jobs_processing}
-                accent="border-blue-500"
-                color="text-blue-600"
+                dot="bg-sky-500"
+                color="text-sky-600 dark:text-sky-400"
               />
               <QueueStat
                 label="Job gagal"
                 value={stats_?.jobs_failed}
-                accent="border-red-500"
-                color="text-red-600"
+                dot="bg-red-500"
+                color="text-red-600 dark:text-red-400"
               />
             </div>
           </CardContent>

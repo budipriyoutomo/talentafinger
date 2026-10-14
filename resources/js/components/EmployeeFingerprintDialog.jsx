@@ -81,14 +81,14 @@ export default function EmployeeFingerprintDialog({ employee, machines = [], onC
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
-      <div className="mt-10 w-full max-w-lg rounded-lg bg-white dark:bg-slate-900 shadow-xl">
-        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 p-4">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-sm">
+      <div className="mt-10 w-full max-w-lg rounded-2xl border bg-card text-card-foreground shadow-2xl">
+        <div className="flex items-center justify-between border-b border-border p-4">
           <div className="flex items-center gap-2">
             <Fingerprint className="h-5 w-5 text-indigo-500" />
             <div>
-              <h3 className="font-semibold text-slate-900 dark:text-slate-50">Sidik Jari — {employee.name}</h3>
-              <p className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap">
+              <h3 className="font-semibold text-foreground">Sidik Jari — {employee.name}</h3>
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
                 Tersimpan di DB: <Badge variant="secondary">{count} jari</Badge>
                 <Badge variant="secondary">
                   {Number(employee.device_privilege) !== 0 ? 'Admin' : 'User biasa'}
@@ -112,7 +112,7 @@ export default function EmployeeFingerprintDialog({ employee, machines = [], onC
             <h4 className="text-sm font-medium flex items-center gap-2">
               <Download className="h-4 w-4 text-emerald-500" /> Tarik ke DB
             </h4>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted-foreground">
               Ambil sidik jari karyawan ini dari mesin berdasarkan <b>Biometric ID</b>
               {employee.biometric_id ? ` (${employee.biometric_id})` : ' (belum diisi → pakai mapping)'}. Menimpa template lama di DB.
             </p>
@@ -134,7 +134,7 @@ export default function EmployeeFingerprintDialog({ employee, machines = [], onC
           </div>
 
           {/* SEBAR dari DB */}
-          <div className="space-y-2 border-t border-slate-200 dark:border-slate-800 pt-4">
+          <div className="space-y-2 border-t border-border pt-4">
             <h4 className="text-sm font-medium flex items-center gap-2">
               <Send className="h-4 w-4 text-indigo-500" /> Sebar dari DB ke Mesin
             </h4>
@@ -142,14 +142,14 @@ export default function EmployeeFingerprintDialog({ employee, machines = [], onC
               <p className="text-xs text-amber-600">Belum ada template di DB. Tarik dulu dari mesin.</p>
             ) : (
               <>
-                <p className="text-xs text-slate-500">Centang mesin tujuan. PIN diambil dari mapping karyawan di tiap mesin.</p>
+                <p className="text-xs text-muted-foreground">Centang mesin tujuan. PIN diambil dari mapping karyawan di tiap mesin.</p>
                 <div className="rounded-md border divide-y dark:divide-slate-800 dark:border-slate-800">
                   {withIp.map((m) => (
                     <label key={m.id} className="flex items-center gap-3 p-2.5 cursor-pointer">
                       <input type="checkbox" className="h-4 w-4" checked={!!targets[m.id]} onChange={() => toggleTarget(m.id)} />
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-slate-900 dark:text-slate-50">{m.name}</div>
-                        <div className="text-xs text-slate-500 font-mono">{m.ip_address}:{m.sdk_port || 4370}</div>
+                        <div className="text-sm font-medium text-foreground">{m.name}</div>
+                        <div className="text-xs text-muted-foreground font-mono">{m.ip_address}:{m.sdk_port || 4370}</div>
                       </div>
                     </label>
                   ))}
@@ -167,7 +167,7 @@ export default function EmployeeFingerprintDialog({ employee, machines = [], onC
                   <div key={i} className="text-xs flex items-center gap-2">
                     <span className={r.ok ? 'text-green-600' : 'text-red-600'}>{r.ok ? '✓' : '✗'}</span>
                     <span className="font-medium">{r.machine}</span>
-                    <span className="text-slate-500">
+                    <span className="text-muted-foreground">
                       {r.ok ? `${r.installed} jari terpasang (PIN ${r.pin})` : (r.error || 'gagal')}
                     </span>
                   </div>

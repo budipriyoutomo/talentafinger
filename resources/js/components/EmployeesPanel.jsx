@@ -360,7 +360,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
           row.getValue('biometric_id') ? (
             <div className="font-mono text-sm">{row.getValue('biometric_id')}</div>
           ) : (
-            <span className="text-slate-400">-</span>
+            <span className="text-muted-foreground">-</span>
           ),
       },
       {
@@ -373,13 +373,13 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
         header: 'Outlet',
         cell: ({ row }) => {
           const outlets = row.original.outlets ?? []
-          if (outlets.length === 0) return <span className="text-slate-400">-</span>
+          if (outlets.length === 0) return <span className="text-muted-foreground">-</span>
           return (
             <div className="flex flex-col gap-1">
               {outlets.map((o) => (
                 <div key={o.id} className="text-sm">
                   <div className="font-medium">{o.name}</div>
-                  <div className="text-xs text-slate-500">
+                  <div className="text-xs text-muted-foreground">
                     {[o.company_name, o.brand_name].filter(Boolean).join(' / ')}
                   </div>
                 </div>
@@ -396,7 +396,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
           const n = e.fingerprints_count ?? 0
           return (
             <Button onClick={() => setFpEmployee(e)} variant="outline" size="sm" className="gap-1.5">
-              <Fingerprint className={`h-3.5 w-3.5 ${n > 0 ? 'text-indigo-500' : 'text-slate-400'}`} />
+              <Fingerprint className={`h-3.5 w-3.5 ${n > 0 ? 'text-indigo-500' : 'text-muted-foreground'}`} />
               {n > 0 ? `${n} jari` : 'Kelola'}
             </Button>
           )
@@ -427,7 +427,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
               </Button>
             </div>
           ) : (
-            <span className="text-xs text-slate-400">-</span>
+            <span className="text-xs text-muted-foreground">-</span>
           ),
       },
     ],
@@ -461,16 +461,16 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
 
       {showForm && canManage && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4"
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-sm"
           onMouseDown={(e) => { if (e.target === e.currentTarget) closeForm() }}
         >
-          <div className="my-10 w-full max-w-3xl rounded-lg bg-white dark:bg-slate-900 shadow-xl">
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200 dark:border-slate-800 p-5">
+          <div className="my-10 w-full max-w-3xl rounded-2xl border bg-card text-card-foreground shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-border p-5">
               <div className="space-y-1">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">
+                <h3 className="text-lg font-semibold text-foreground">
                   {editingId ? 'Edit Karyawan' : 'Tambah Karyawan'}
                 </h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
+                <p className="text-sm text-muted-foreground">
                   Master karyawan. Penempatan dipilih bertingkat: Company → Brand → Outlet.
                   Biometric ID (PIN) dipakai sebagai identitas di semua mesin.
                 </p>
@@ -480,7 +480,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
             <form onSubmit={handleSubmit} className="space-y-4 p-5">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Nama</label>
+                  <label className="text-sm font-medium text-foreground">Nama</label>
                   <Input
                     type="text"
                     required
@@ -490,7 +490,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Talenta Employee ID</label>
+                  <label className="text-sm font-medium text-foreground">Talenta Employee ID</label>
                   <Input
                     type="text"
                     required
@@ -500,7 +500,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Kode / NIK (opsional)</label>
+                  <label className="text-sm font-medium text-foreground">Kode / NIK (opsional)</label>
                   <Input
                     type="text"
                     value={formData.employee_code}
@@ -512,7 +512,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Company</label>
+                  <label className="text-sm font-medium text-foreground">Company</label>
                   <Select
                     value={formData.company_id}
                     onChange={(e) => onCompanyChange(e.target.value)}
@@ -524,7 +524,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Brand</label>
+                  <label className="text-sm font-medium text-foreground">Brand</label>
                   <Select
                     value={formData.brand_id}
                     onChange={(e) => onBrandChange(e.target.value)}
@@ -537,7 +537,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Outlet</label>
+                  <label className="text-sm font-medium text-foreground">Outlet</label>
                   <Select
                     value=""
                     onChange={(e) => { addOutlet(e.target.value); }}
@@ -550,7 +550,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                         <option key={o.id} value={o.id}>{o.name}</option>
                       ))}
                   </Select>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-muted-foreground">
                     Pilih untuk menambah. Satu karyawan boleh punya lebih dari satu outlet.
                   </p>
                 </div>
@@ -558,11 +558,11 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
 
               {/* Daftar outlet terpilih (banyak) */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-900 dark:text-slate-50">
+                <label className="text-sm font-medium text-foreground">
                   Outlet Terdaftar ({formData.outlet_ids.length})
                 </label>
                 {formData.outlet_ids.length === 0 ? (
-                  <p className="text-sm text-slate-400">Belum ada outlet dipilih.</p>
+                  <p className="text-sm text-muted-foreground">Belum ada outlet dipilih.</p>
                 ) : (
                   <div className="flex flex-wrap gap-2">
                     {formData.outlet_ids.map((id) => {
@@ -573,11 +573,11 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                           className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-sm"
                         >
                           <span className="font-medium">{o?.name ?? id}</span>
-                          {o?.brand_name && <span className="text-xs text-slate-500">· {o.brand_name}</span>}
+                          {o?.brand_name && <span className="text-xs text-muted-foreground">· {o.brand_name}</span>}
                           <button
                             type="button"
                             onClick={() => removeOutlet(id)}
-                            className="text-slate-400 hover:text-red-600"
+                            className="text-muted-foreground hover:text-red-600"
                             title="Hapus outlet"
                           >
                             <X className="h-3.5 w-3.5" />
@@ -591,19 +591,19 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Biometric ID</label>
+                  <label className="text-sm font-medium text-foreground">Biometric ID</label>
                   <Input
                     type="text"
                     value={formData.biometric_id}
                     onChange={(e) => setFormData({ ...formData, biometric_id: e.target.value })}
                     placeholder="PIN di mesin, mis. 101"
                   />
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-muted-foreground">
                     Dipakai sebagai dasar tarik/sebar sidik jari dari/ke mesin.
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Hak Akses Mesin</label>
+                  <label className="text-sm font-medium text-foreground">Hak Akses Mesin</label>
                   <Select
                     value={formData.device_privilege}
                     onChange={(e) => setFormData({ ...formData, device_privilege: Number(e.target.value) })}
@@ -612,13 +612,13 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
                   </Select>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-muted-foreground">
                     Role saat sidik jari disebar ke mesin. Akan diperbarui otomatis bila menarik dari mesin.
                   </p>
                 </div>
               </div>
 
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-900 dark:text-slate-50">
+              <label className="flex items-center gap-2 text-sm font-medium text-foreground">
                 <input
                   type="checkbox"
                   className="h-4 w-4"
@@ -627,7 +627,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                 />
                 Aktif
               </label>
-              <label className="flex items-start gap-2 text-sm font-medium text-slate-900 dark:text-slate-50">
+              <label className="flex items-start gap-2 text-sm font-medium text-foreground">
                 <input
                   type="checkbox"
                   className="mt-0.5 h-4 w-4"
@@ -636,13 +636,13 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                 />
                 <span>
                   Boleh absen pakai foto
-                  <span className="block text-xs font-normal text-slate-500">
+                  <span className="block text-xs font-normal text-muted-foreground">
                     Karyawan bisa absen dari HP (foto + lokasi) di halaman /absen, perlu persetujuan
                     supervisor. Butuh akun ber-role Karyawan (Pengaturan → User &amp; Role).
                   </span>
                 </span>
               </label>
-              <div className="flex gap-2 border-t border-slate-200 dark:border-slate-800 pt-4">
+              <div className="flex gap-2 border-t border-border pt-4">
                 <Button type="submit">{editingId ? 'Update' : 'Save'}</Button>
                 <Button type="button" variant="outline" onClick={closeForm}>Cancel</Button>
               </div>
@@ -678,7 +678,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
             <>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Company</label>
+                <label className="text-sm font-medium text-foreground">Company</label>
                 <Select value={companyFilter} onChange={(e) => onCompanyFilterChange(e.target.value)}>
                   <option value="">Semua Company</option>
                   {companies.map((c) => (
@@ -687,7 +687,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Brand</label>
+                <label className="text-sm font-medium text-foreground">Brand</label>
                 <Select value={brandFilter} onChange={(e) => onBrandFilterChange(e.target.value)}>
                   <option value="">Semua Brand</option>
                   {filterBrandOptions.map((b) => (
@@ -696,7 +696,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Outlet</label>
+                <label className="text-sm font-medium text-foreground">Outlet</label>
                 <Select value={outletFilter} onChange={(e) => setOutletFilter(e.target.value)}>
                   <option value="">Semua Outlet</option>
                   {filterOutletOptions.map((o) => (
@@ -705,7 +705,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Status</label>
+                <label className="text-sm font-medium text-foreground">Status</label>
                 <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                   <option value="">Semua Status</option>
                   <option value="active">Aktif</option>
@@ -713,7 +713,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Hak Akses Mesin</label>
+                <label className="text-sm font-medium text-foreground">Hak Akses Mesin</label>
                 <Select value={privilegeFilter} onChange={(e) => setPrivilegeFilter(e.target.value)}>
                   <option value="">Semua Hak Akses</option>
                   {PRIVILEGE_OPTIONS.map((o) => (
@@ -722,7 +722,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Sidik Jari (DB)</label>
+                <label className="text-sm font-medium text-foreground">Sidik Jari (DB)</label>
                 <Select value={fpFilter} onChange={(e) => setFpFilter(e.target.value)}>
                   <option value="">Semua</option>
                   <option value="has">Sudah ada</option>
@@ -730,7 +730,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Biometric ID</label>
+                <label className="text-sm font-medium text-foreground">Biometric ID</label>
                 <Select value={biometricFilter} onChange={(e) => setBiometricFilter(e.target.value)}>
                   <option value="">Semua</option>
                   <option value="has">Sudah diisi</option>
@@ -738,7 +738,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Penempatan</label>
+                <label className="text-sm font-medium text-foreground">Penempatan</label>
                 <Select value={placementFilter} onChange={(e) => setPlacementFilter(e.target.value)}>
                   <option value="">Semua</option>
                   <option value="placed">Punya outlet</option>

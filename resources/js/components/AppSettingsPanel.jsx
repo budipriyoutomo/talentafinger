@@ -169,7 +169,7 @@ export default function AppSettingsPanel({ groups = {} }) {
     <div className="space-y-6">
       {/* Menempel di atas saat di-scroll: tombol Simpan selalu terlihat dari kartu mana pun. */}
       <div className="sticky top-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-3 rounded-md bg-background/95 px-1 py-2 backdrop-blur">
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-muted-foreground">
           Nilai di sini menimpa konfigurasi <code>.env</code>. Kosongkan sebuah field untuk kembali memakai nilai default <code>.env</code>.
         </p>
         <div className="flex items-center gap-3">
@@ -217,11 +217,11 @@ export default function AppSettingsPanel({ groups = {} }) {
                         <Badge variant="secondary" className="text-[10px]">terisi</Badge>
                       )}
                     </label>
-                    <code className="text-[11px] text-slate-400">{s.key}</code>
+                    <code className="text-[11px] text-muted-foreground">{s.key}</code>
                   </div>
                   <div className="sm:col-span-2 space-y-1">
                     {renderField(s)}
-                    {s.description && <p className="text-xs text-slate-500">{s.description}</p>}
+                    {s.description && <p className="text-xs text-muted-foreground">{s.description}</p>}
                   </div>
                 </div>
               ))}

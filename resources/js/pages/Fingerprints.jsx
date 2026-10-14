@@ -384,7 +384,7 @@ export default function Fingerprints({ machines = [], employeesByPin = {} }) {
       {
         accessorKey: 'name',
         header: 'Nama',
-        cell: ({ row }) => row.getValue('name') || <span className="text-slate-400">-</span>,
+        cell: ({ row }) => row.getValue('name') || <span className="text-muted-foreground">-</span>,
       },
       {
         id: 'brand_outlet',
@@ -396,7 +396,7 @@ export default function Fingerprints({ machines = [], employeesByPin = {} }) {
           }
           const outlets = emp.outlets ?? []
           if (outlets.length === 0) {
-            return <span className="text-xs text-slate-400">tanpa outlet</span>
+            return <span className="text-xs text-muted-foreground">tanpa outlet</span>
           }
           return (
             <div className="flex flex-col gap-0.5">
@@ -432,10 +432,10 @@ export default function Fingerprints({ machines = [], employeesByPin = {} }) {
                 </Button>
               )
             ) : (
-              <span className="text-xs text-slate-400">tanpa sidik jari</span>
+              <span className="text-xs text-muted-foreground">tanpa sidik jari</span>
             )}
             {!canSync && row.original.fingers > 0 && (
-              <span className="text-xs text-slate-400">{row.original.fingers} jari</span>
+              <span className="text-xs text-muted-foreground">{row.original.fingers} jari</span>
             )}
             {savedPins[row.original.pin] ? (
               <span className="inline-flex items-center gap-1 text-xs text-green-600" title={
@@ -523,7 +523,7 @@ export default function Fingerprints({ machines = [], employeesByPin = {} }) {
           <CardContent>
             <div className="flex flex-wrap items-end gap-3">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-900 dark:text-slate-50">Mesin</label>
+                <label className="text-sm font-medium text-foreground">Mesin</label>
                 <Select
                   value={sourceId}
                   onChange={(e) => setSourceId(e.target.value)}
@@ -575,7 +575,7 @@ export default function Fingerprints({ machines = [], employeesByPin = {} }) {
                       className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 text-xs"
                     >
                       <span className="font-mono">{u.pin}</span>
-                      {u.name && <span className="text-slate-500">· {u.name}</span>}
+                      {u.name && <span className="text-muted-foreground">· {u.name}</span>}
                     </span>
                   ))}
                 </div>
@@ -590,8 +590,8 @@ export default function Fingerprints({ machines = [], employeesByPin = {} }) {
                       onChange={() => toggleTarget(m.id)}
                     />
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-slate-900 dark:text-slate-50">{m.name}</div>
-                      <div className="text-xs text-slate-500 font-mono">{m.ip_address}:{m.sdk_port || 4370}</div>
+                      <div className="text-sm font-medium text-foreground">{m.name}</div>
+                      <div className="text-xs text-muted-foreground font-mono">{m.ip_address}:{m.sdk_port || 4370}</div>
                     </div>
                   </label>
                 ))}
@@ -604,7 +604,7 @@ export default function Fingerprints({ machines = [], employeesByPin = {} }) {
                 <Button variant="outline" onClick={() => setPushPins(null)}>Tutup</Button>
               </div>
               {syncing && (
-                <p className="text-xs text-slate-500 mt-2">
+                <p className="text-xs text-muted-foreground mt-2">
                   Berjalan di background — boleh tutup panel ini, proses tetap lanjut.
                 </p>
               )}
@@ -647,7 +647,7 @@ export default function Fingerprints({ machines = [], employeesByPin = {} }) {
                       <div key={i} className="rounded-md border dark:border-slate-800 p-3">
                         <div className="flex items-center gap-2 text-sm font-medium">
                           <span className="font-mono">{item.pin}</span>
-                          {item.name && <span className="text-slate-500">· {item.name}</span>}
+                          {item.name && <span className="text-muted-foreground">· {item.name}</span>}
                           {!item.ok && (
                             <span className="text-red-600">— {item.error || 'gagal'}</span>
                           )}
@@ -660,7 +660,7 @@ export default function Fingerprints({ machines = [], employeesByPin = {} }) {
                                   {r.ok ? '✓' : '✗'}
                                 </span>
                                 <span className="font-medium">{r.machine}</span>
-                                <span className="text-slate-500">
+                                <span className="text-muted-foreground">
                                   {r.ok ? `${r.installed} jari terpasang` : (r.error || 'gagal')}
                                 </span>
                               </div>
@@ -713,7 +713,7 @@ export default function Fingerprints({ machines = [], employeesByPin = {} }) {
                 </div>
               )}
               {deletingBulk && (
-                <p className="text-xs text-slate-500 mt-2">
+                <p className="text-xs text-muted-foreground mt-2">
                   Berjalan di background — boleh tinggalkan halaman, proses tetap lanjut.
                 </p>
               )}
@@ -723,7 +723,7 @@ export default function Fingerprints({ machines = [], employeesByPin = {} }) {
                     <div key={i} className="text-xs flex items-center gap-2">
                       <span className="text-red-600">✗</span>
                       <span className="font-mono">{it.pin}</span>
-                      <span className="text-slate-500">{it.error || 'gagal dihapus'}</span>
+                      <span className="text-muted-foreground">{it.error || 'gagal dihapus'}</span>
                     </div>
                   ))}
                 </div>
