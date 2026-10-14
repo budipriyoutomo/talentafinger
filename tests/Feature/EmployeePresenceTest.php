@@ -83,14 +83,18 @@ class EmployeePresenceTest extends TestCase
         ]);
     }
 
-    public function test_agregasi_per_karyawan_per_mesin_dengan_identitas_mesin(): void
+    public function test_satu_baris_per_karyawan_mesin_hari_dengan_masuk_keluar(): void
     {
         $hari = today()->toDateString();
+        $kemarin = today()->subDay()->toDateString();
         $this->log($this->kopiA, '101', "$hari 08:00:00");
+        $this->log($this->kopiA, '101', "$hari 12:30:00");
         $this->log($this->kopiA, '101', "$hari 17:00:00");
         $this->log($this->kopiB, '101', "$hari 12:00:00");
         // Duplikat tak dihitung.
         $this->log($this->kopiB, '101', "$hari 12:00:05", 'duplicate');
+        $this->log($this->kopiA, '101', "$kemarin 07:55:00");
+        $this->log($this->kopiA, '101', "$kemarin 16:10:00");
 
         $this->actingAs($this->user('admin'));
 
@@ -98,15 +102,20 @@ class EmployeePresenceTest extends TestCase
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('EmployeePresence')
-                ->has('rows', 1)
+                ->has('rows', 3)
+                // Hari ini dulu, dalam satu hari urut jam masuk.
+                ->where('rows.0.date', $hari)
                 ->where('rows.0.name', 'Andi')
-                ->where('rows.0.machines_count', 2)
+                ->where('rows.0.machine_id', $this->kopiA->id)
+                ->where('rows.0.check_in', "$hari 08:00:00")
+                ->where('rows.0.check_out', "$hari 17:00:00")
                 ->where('rows.0.total', 3)
-                ->where('rows.0.last_at', "$hari 17:00:00")
-                ->where('rows.0.machines.0.machine_id', $this->kopiA->id)
-                ->where('rows.0.machines.0.total', 2)
-                ->where('rows.0.machines.0.first_at', "$hari 08:00:00")
-                ->where('rows.0.machines.1.total', 1)
+                ->where('rows.1.machine_id', $this->kopiB->id)
+                ->where('rows.1.check_in', "$hari 12:00:00")
+                ->where('rows.1.total', 1)
+                ->where('rows.2.date', $kemarin)
+                ->where('rows.2.check_in', "$kemarin 07:55:00")
+                ->where('rows.2.check_out', "$kemarin 16:10:00")
                 ->where("machineIdentities.{$this->kopiA->id}.serial_number", 'SN-KOPI-A')
                 ->where("machineIdentities.{$this->kopiA->id}.outlet_name", 'Kopi Sudirman')
                 ->where("machineIdentities.{$this->kopiA->id}.brand_name", 'Kopi')
@@ -156,8 +165,7 @@ class EmployeePresenceTest extends TestCase
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->has('rows', 1)
-                ->where('rows.0.machines_count', 1)
-                ->where('rows.0.machines.0.machine_id', $this->kopiA->id)
+                ->where('rows.0.machine_id', $this->kopiA->id)
                 ->missing("machineIdentities.{$this->sateA->id}")
                 ->etc());
     }
@@ -172,9 +180,36 @@ class EmployeePresenceTest extends TestCase
 
         $this->get('/employee-presence?machine_id=' . $this->kopiB->id)
             ->assertInertia(fn ($page) => $page
-                ->where('rows.0.machines_count', 1)
-                ->where('rows.0.machines.0.machine_id', $this->kopiB->id)
+                ->has('rows', 1)
+                ->where('rows.0.machine_id', $this->kopiB->id)
                 ->etc());
+    }
+
+    public function test_filter_karyawan_lewat_pin_dan_dropdown_berisi_karyawan_ber_pin(): void
+    {
+        $budi = Employee::create(['name' => 'Budi', 'talenta_employee_id' => 'T2', 'biometric_id' => '202']);
+        Employee::create(['name' => 'Tanpa PIN', 'talenta_employee_id' => 'T3']);
+        $andi = Employee::where('biometric_id', '101')->first();
+
+        $hari = today()->toDateString();
+        $this->log($this->kopiA, '101', "$hari 08:00:00");
+        $this->log($this->kopiA, '202', "$hari 08:05:00");
+
+        $this->actingAs($this->user('admin'));
+
+        $this->get('/employee-presence?employee_id=' . $budi->id)
+            ->assertInertia(fn ($page) => $page
+                ->has('rows', 1)
+                ->where('rows.0.pin', '202')
+                ->where('rows.0.employee_id', $budi->id)
+                ->where('filters.employee_id', $budi->id)
+                ->has('employees', 2)
+                ->where('employees.0.id', $andi->id)
+                ->etc());
+
+        // ID asal-asalan diabaikan (bukan UUID) -> tampil semua.
+        $this->get('/employee-presence?employee_id=xyz')
+            ->assertInertia(fn ($page) => $page->has('rows', 2)->where('filters.employee_id', null)->etc());
     }
 
     public function test_akun_tanpa_attendance_view_ditolak(): void
