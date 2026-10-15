@@ -22,9 +22,7 @@ import {
   MapPin,
   Network,
   RotateCcw,
-  Shuffle,
   SlidersHorizontal,
-  Users,
   X,
 } from 'lucide-react'
 
@@ -83,28 +81,6 @@ const datePresets = () => {
   ]
 }
 
-function StatCard({ icon: Icon, label, value, hint, tone }) {
-  const tones = {
-    slate: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-    indigo: 'bg-indigo-100 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300',
-    amber: 'bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-300',
-    rose: 'bg-rose-100 text-rose-600 dark:bg-rose-950 dark:text-rose-300',
-  }
-  return (
-    <Card className="gap-0 py-4">
-      <CardContent className="flex items-center gap-4 px-4">
-        <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-lg', tones[tone])}>
-          <Icon className="h-5 w-5" />
-        </div>
-        <div className="min-w-0">
-          <div className="text-muted-foreground truncate text-sm">{label}</div>
-          <div className="text-2xl font-bold leading-tight">{value}</div>
-          {hint && <div className="text-muted-foreground truncate text-xs">{hint}</div>}
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
 
 // Pil jam masuk/keluar.
 function TimePill({ kind, value }) {
@@ -419,23 +395,6 @@ export default function EmployeePresence({
     link.click()
   }
 
-  // Kartu ringkasan dihitung per PIN unik (satu PIN muncul di banyak baris).
-  const stats = useMemo(() => {
-    const byPin = new Map()
-    rows.forEach((r) => {
-      const entry = byPin.get(r.pin) || { known: !!r.name, machines: new Set() }
-      entry.machines.add(r.machine_id)
-      byPin.set(r.pin, entry)
-    })
-    const pins = [...byPin.values()]
-    return {
-      employees: pins.filter((p) => p.known).length,
-      multiMachine: pins.filter((p) => p.machines.size > 1).length,
-      unknownPins: pins.filter((p) => !p.known).length,
-      noCheckout: rows.filter((r) => r.total < 2).length,
-    }
-  }, [rows])
-
   return (
     <Layout>
       <Head title="Absen per Mesin" />
@@ -451,14 +410,6 @@ export default function EmployeePresence({
           <Button onClick={handleExport} variant="outline" className="gap-2" disabled={rows.length === 0}>
             <Download className="h-4 w-4" /> Export CSV
           </Button>
-        </div>
-
-        {/* Ringkasan */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard icon={Users} tone="indigo" label="Karyawan absen" value={stats.employees} hint={`${rows.length} baris kehadiran`} />
-          <StatCard icon={Shuffle} tone="slate" label="Absen di > 1 mesin" value={stats.multiMachine} hint="karyawan berpindah mesin" />
-          <StatCard icon={LogOut} tone="amber" label="Belum absen keluar" value={stats.noCheckout} hint="hanya 1 tap di hari itu" />
-          <StatCard icon={AlertTriangle} tone="rose" label="PIN tak dikenal" value={stats.unknownPins} hint="tak cocok ke data karyawan" />
         </div>
 
         {/* Filter */}
