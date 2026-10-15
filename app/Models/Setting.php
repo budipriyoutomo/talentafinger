@@ -38,9 +38,18 @@ class Setting extends Model
     /** Simpan/timpa satu setting lalu buang cache. */
     public static function put(string $key, $value): void
     {
-        static::where('key', $key)->update([
+        $affected = static::where('key', $key)->update([
             'value' => is_bool($value) ? ($value ? '1' : '0') : (string) $value,
         ]);
+
+        // Baris belum ada = SettingSeeder belum dijalankan. Jangan gagal diam-diam:
+        // nilainya tak tersimpan dan fitur terlihat "mati" tanpa sebab yang jelas.
+        if ($affected === 0 && ! static::where('key', $key)->exists()) {
+            throw new \RuntimeException(
+                "Setting '{$key}' belum ada di tabel settings. Jalankan: php artisan db:seed --class=SettingSeeder --force"
+            );
+        }
+
         static::flushCache();
     }
 

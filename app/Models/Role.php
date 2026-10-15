@@ -94,4 +94,22 @@ class Role extends Model
             config('permissions.system_only', []),
         ));
     }
+
+    /** Tambahkan prasyarat (config permissions.requires) ke daftar permission. */
+    public static function withRequirements(array $permissions): array
+    {
+        $requires = config('permissions.requires', []);
+        $result = array_values(array_unique($permissions));
+
+        // count() dievaluasi ulang: prasyarat yang baru ditambah ikut diperiksa (bila berantai).
+        for ($i = 0; $i < count($result); $i++) {
+            foreach ($requires[$result[$i]] ?? [] as $needed) {
+                if (! in_array($needed, $result, true)) {
+                    $result[] = $needed;
+                }
+            }
+        }
+
+        return $result;
+    }
 }

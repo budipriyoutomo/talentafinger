@@ -367,10 +367,18 @@ class DashboardController extends Controller
     {
         $grantable = AccessDelegation::for($viewer)->grantablePermissions();
 
+        // Key permission mengandung titik, jadi TIDAK bisa diambil lewat
+        // config("permissions.permissions.{$key}") (dibaca sebagai path bersarang -> null).
+        $labels = config('permissions.permissions', []);
+        $descriptions = config('permissions.descriptions', []);
+        $requires = config('permissions.requires', []);
+
         return collect(Role::assignablePermissions())
             ->map(fn ($key) => [
                 'key' => $key,
-                'label' => config("permissions.permissions.{$key}"),
+                'label' => $labels[$key] ?? $key,
+                'description' => $descriptions[$key] ?? null,
+                'requires' => $requires[$key] ?? [],
                 'grantable' => in_array($key, $grantable, true),
             ])
             ->all();

@@ -52,6 +52,53 @@ return [
 
     /*
     |---------------------------------------------------------------------------
+    | Penjelasan untuk orang awam (form role di /settings)
+    |---------------------------------------------------------------------------
+    | Ditulis sebagai "apa yang bisa dilakukan di layar", bukan istilah teknis.
+    */
+    'descriptions' => [
+        'machine.view' => 'Membuka menu Machines: daftar mesin, status online, dan jam mesin.',
+        'machine.manage' => 'Mengubah data mesin, sinkron jam, menghapus log di perangkat. Berdampak langsung ke mesin.',
+
+        'attendance.view' => 'Membuka menu Logs dan Absen per Mesin. Wajib untuk kirim maupun review absensi.',
+        'attendance.send' => 'Tombol Kirim / Kirim Ulang absensi ke Talenta.',
+        'attendance.review' => 'Tombol Setujui / Tolak pada absen foto berstatus "menunggu review" di menu Logs. Hanya untuk outlet yang ditugaskan ke user.',
+
+        'employee.view' => 'Membuka menu Employees (hanya melihat).',
+        'employee.manage' => 'Menambah, mengubah, menghapus karyawan, termasuk izin absen foto per karyawan.',
+
+        'fingerprint.view' => 'Membuka menu Sidik Jari.',
+        'fingerprint.sync' => 'Menarik sidik jari dari mesin dan menyebarkannya ke mesin lain.',
+        'fingerprint.delete' => 'Menghapus sidik jari / user dari mesin. Tidak bisa dibatalkan.',
+
+        'org.manage' => 'Mengubah Company, Brand, Outlet, termasuk titik koordinat outlet untuk absen foto.',
+        'setting.manage' => 'Membuka Pengaturan Aplikasi, termasuk kredensial Talenta dan saklar absen foto.',
+        'user.manage' => 'Membuat / mengubah user, memilih role, dan menugaskan outlet.',
+        'role.manage' => 'Membuka halaman ini: membuat dan mengubah role.',
+        'audit.view' => 'Membuka Audit Log: riwayat semua perubahan oleh semua user.',
+
+        'data.all' => 'Melihat data SEMUA outlet tanpa perlu ditugaskan. Tanpa ini, user hanya melihat outlet yang ditugaskan di tab User.',
+    ],
+
+    /*
+    |---------------------------------------------------------------------------
+    | Prasyarat antar permission
+    |---------------------------------------------------------------------------
+    | permission => permission lain yang WAJIB ikut. Mis. tombol Setujui ada di
+    | halaman Logs, jadi review tanpa attendance.view tak bisa dipakai. Form role
+    | mencentang prasyarat otomatis dan RoleController menambahkannya saat simpan.
+    */
+    'requires' => [
+        'machine.manage' => ['machine.view'],
+        'attendance.send' => ['attendance.view'],
+        'attendance.review' => ['attendance.view'],
+        'employee.manage' => ['employee.view'],
+        'fingerprint.sync' => ['fingerprint.view'],
+        'fingerprint.delete' => ['fingerprint.view'],
+    ],
+
+    /*
+    |---------------------------------------------------------------------------
     | Permission khusus role sistem
     |---------------------------------------------------------------------------
     | Tak bisa dicentang pada role buatan sendiri. Absen foto butuh akun yang

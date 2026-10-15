@@ -129,10 +129,14 @@
     }
 }
 
-/* Transisi halus saat konten halaman muncul. */
+/* Transisi halus saat konten halaman muncul.
+   fill-mode HARUS `backwards`, bukan `both`: kalau `transform` tetap menempel
+   setelah animasi selesai, <main> jadi containing block untuk elemen
+   position:fixed, sehingga overlay dialog (fixed inset-0) hanya menutupi area
+   konten, tidak satu layar penuh (sidebar & header tetap bisa diklik). */
 @layer utilities {
     .animate-in-page {
-        animation: page-in 0.25s ease-out both;
+        animation: page-in 0.25s ease-out backwards;
     }
 }
 

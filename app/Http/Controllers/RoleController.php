@@ -54,6 +54,7 @@ class RoleController extends Controller
         ], [
             'key.regex' => 'Key hanya huruf kecil, angka, dan underscore, diawali huruf.',
         ]);
+        $data['permissions'] = Role::withRequirements($data['permissions']);
 
         $this->guardGrant($request, $data['permissions']);
 
@@ -76,6 +77,7 @@ class RoleController extends Controller
         $this->guardEdit($request, $role);
 
         $data = $request->validate($this->rules());
+        $data['permissions'] = Role::withRequirements($data['permissions']);
         $this->guardGrant($request, $data['permissions']);
 
         $before = [...$role->only(['name', 'description']), 'permissions' => $role->permissions()];
