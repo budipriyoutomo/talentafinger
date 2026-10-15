@@ -4,16 +4,17 @@ import { confirmToast } from '@/lib/confirm'
 import { Button } from '@/components/ui/button'
 import ThemeToggle from '@/components/ThemeToggle'
 import { KeyRound, LogOut, Menu } from 'lucide-react'
-import Sidebar, { navItems } from './Sidebar'
+import Sidebar from './Sidebar'
+import { useNavigation } from '@/lib/navigation'
 
 const COLLAPSED_KEY = 'adms.sidebar.collapsed'
 
 export default function Layout({ children }) {
-  const { url, props } = usePage()
+  const { props } = usePage()
   const user = props?.auth?.user
 
-  const current = navItems.find((item) => item.href === url.split('?')[0])
-  const pageTitle = current ? (current.title ?? current.label) : ''
+  const { active } = useNavigation()
+  const pageTitle = active ? (active.title ?? active.label) : ''
 
   // Dibaca saat inisialisasi state (bukan di useEffect) supaya sidebar tidak
   // sempat berkedip lebar dulu sebelum menyusut.

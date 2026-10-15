@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Head, Link, router } from '@inertiajs/react'
+import { Head, router } from '@inertiajs/react'
 import Layout from '../layouts/Layout'
 import { DataTable } from '@/components/DataTable'
 import { Card, CardContent } from '@/components/ui/card'
@@ -14,7 +14,6 @@ import {
   CalendarDays,
   ChevronRight,
   Clock,
-  Cpu,
   Download,
   Fingerprint,
   Loader2,
@@ -84,24 +83,6 @@ const datePresets = () => {
   ]
 }
 
-// Badge jalur ADMS (mesin -> server) & TCP 4370 (server -> mesin), sama
-// artinya dengan badge di halaman Machines.
-function MachineStatus({ machine }) {
-  return (
-    <div className="flex flex-wrap gap-1">
-      {!machine.is_active && <Badge variant="secondary">Nonaktif</Badge>}
-      <Badge variant={machine.is_online ? 'success' : 'destructive'}>
-        ADMS {machine.is_online ? 'online' : 'offline'}
-      </Badge>
-      {machine.tcp_ready !== null && machine.tcp_ready !== undefined && (
-        <Badge variant={machine.tcp_ready ? 'success' : 'warning'}>
-          TCP {machine.tcp_ready ? 'ready' : 'gagal'}
-        </Badge>
-      )}
-    </div>
-  )
-}
-
 function StatCard({ icon: Icon, label, value, hint, tone }) {
   const tones = {
     slate: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
@@ -153,24 +134,15 @@ function Field({ label, children, className }) {
   )
 }
 
-/** Detail satu baris: absen karyawan di satu mesin pada satu hari + identitas mesinnya. */
-function PresenceDialog({ row, machineIdentities, onClose }) {
+/** Detail satu baris: ringkasan tap karyawan di satu mesin pada satu hari. */
+function PresenceDialog({ row, onClose }) {
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const m = machineIdentities[row.machine_id] || {}
   const duration = durationOf(row)
-
-  const info = [
-    ['Serial Number', <span className="font-mono">{m.serial_number || '-'}</span>],
-    ['Penempatan', placement(m) || 'Belum ditempatkan'],
-    ['Lokasi', m.location || '-'],
-    ['IP : Port', <span className="font-mono">{m.ip_address ? `${m.ip_address}:${m.sdk_port || 4370}` : '-'}</span>],
-    ['Terakhir terhubung', m.last_seen_at || '-'],
-  ]
 
   return (
     <div
@@ -219,33 +191,10 @@ function PresenceDialog({ row, machineIdentities, onClose }) {
               </div>
             ))}
           </div>
-
-          <div className="rounded-lg border">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-              <div className="flex items-center gap-2">
-                <Cpu className="text-muted-foreground h-4 w-4" />
-                <span className="font-medium">{machineLabel(m)}</span>
-              </div>
-              <MachineStatus machine={m} />
-            </div>
-            <dl className="divide-y text-sm">
-              {info.map(([label, value]) => (
-                <div key={label} className="flex justify-between gap-4 px-4 py-2">
-                  <dt className="text-muted-foreground">{label}</dt>
-                  <dd className="text-right">{value}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
         </div>
 
         <div className="bg-muted/30 flex justify-end gap-2 border-t px-5 py-3">
           <Button variant="outline" onClick={onClose}>Tutup</Button>
-          <Button asChild className="gap-1">
-            <Link href={`/attendance-logs?machine_id=${row.machine_id}&date_from=${row.date}&date_to=${row.date}`}>
-              Lihat log mentah <ChevronRight className="h-4 w-4" />
-            </Link>
-          </Button>
         </div>
       </div>
     </div>
@@ -626,7 +575,6 @@ export default function EmployeePresence({
       {detail && (
         <PresenceDialog
           row={detail}
-          machineIdentities={machineIdentities}
           onClose={() => setDetail(null)}
         />
       )}

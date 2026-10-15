@@ -1,49 +1,13 @@
-import React, { useEffect, useMemo } from 'react'
+import React, { useEffect } from 'react'
 import { Link, usePage } from '@inertiajs/react'
 import { cn } from '@/lib/utils'
-import { usePermissions } from '@/lib/permissions'
-import {
-  LayoutDashboard,
-  Cpu,
-  FileText,
-  MapPin,
-  UserCircle,
-  Fingerprint,
-  History,
-  Settings,
-  PanelLeftClose,
-  PanelLeftOpen,
-  ScanFace,
-} from 'lucide-react'
+import { hrefOf, useNavigation } from '@/lib/navigation'
+import { PanelLeftClose, PanelLeftOpen, ScanFace } from 'lucide-react'
 
-// `label` = teks di sidebar (pendek). `title` = judul halaman di topbar, dipakai
-// hanya kalau judulnya beda dari label (mis. "Logs" vs "Attendance Logs").
-// `permission` = izin minimum untuk melihat menunya (array = cukup salah satu);
-// halaman itu sendiri tetap dijaga di server (buka URL-nya langsung tanpa izin = 403).
-export const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/machines', label: 'Machines', icon: Cpu, permission: 'machine.view' },
-  { href: '/attendance-logs', label: 'Logs', title: 'Attendance Logs', icon: FileText, permission: 'attendance.view' },
-  { href: '/employee-presence', label: 'Absen per Mesin', title: 'Karyawan Absen di Mesin Mana', icon: MapPin, permission: 'attendance.view' },
-  { href: '/employee-management', label: 'Employees', icon: UserCircle, permission: 'employee.view' },
-  { href: '/fingerprints', label: 'Sidik Jari', icon: Fingerprint, permission: 'fingerprint.view' },
-  { href: '/audit-logs', label: 'Audit Log', icon: History, permission: 'audit.view' },
-  { href: '/settings', label: 'Pengaturan', icon: Settings, permission: ['setting.manage', 'user.manage', 'role.manage'] },
-]
-
+// Daftar menu, pengelompokan, dan permission tiap menu ada di lib/navigation.js.
 export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile }) {
   const { url } = usePage()
-  const pathname = url.split('?')[0]
-  const { can, canAny } = usePermissions()
-
-  const visibleItems = useMemo(
-    () =>
-      navItems.filter((item) =>
-        !item.permission ||
-        (Array.isArray(item.permission) ? canAny(...item.permission) : can(item.permission))
-      ),
-    [can, canAny]
-  )
+  const { groups, active } = useNavigation()
 
   // Drawer ditutup saat pindah halaman dan saat Esc ditekan.
   useEffect(() => {
@@ -111,36 +75,54 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
           </button>
         </div>
 
-        <nav aria-label="Menu utama" className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-          <p className={cn('px-3 pb-2 text-[11px] font-semibold tracking-wider text-muted-foreground/70 uppercase', collapsed && 'md:hidden')}>
-            Menu
-          </p>
-          {visibleItems.map(({ href, label, icon: Icon }) => {
-            const active = pathname === href
+        <nav aria-label="Menu utama" className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
+          {groups.map((group, index) => (
+            <div key={group.key} role="group" aria-labelledby={group.label ? `nav-${group.key}` : undefined}>
+              {group.label && (
+                <p
+                  id={`nav-${group.key}`}
+                  className={cn('px-3 pb-1.5 text-[11px] font-semibold tracking-wider text-muted-foreground/70 uppercase', collapsed && 'md:hidden')}
+                >
+                  {group.label}
+                </p>
+              )}
+              {/* Saat diciutkan label grup hilang; garis tipis jadi pemisahnya. */}
+              {collapsed && index > 0 && (
+                <div className="mx-3 mb-2 hidden border-t border-sidebar-border md:block" aria-hidden="true" />
+              )}
 
-            return (
-              <Link
-                key={href}
-                href={href}
-                aria-current={active ? 'page' : undefined}
-                title={collapsed ? label : undefined}
-                className={cn(
-                  'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
-                  collapsed && 'md:justify-center md:px-0',
-                  active
-                    ? 'bg-sidebar-accent font-semibold text-sidebar-accent-foreground'
-                    : 'font-medium text-muted-foreground hover:bg-muted hover:text-foreground'
-                )}
-              >
-                {active && (
-                  <span className="absolute top-1.5 bottom-1.5 left-0 w-1 rounded-r-full bg-primary" aria-hidden="true" />
-                )}
-                <Icon className={cn('h-4 w-4 shrink-0', active ? 'text-primary' : 'opacity-80 group-hover:opacity-100')} />
-                {/* Label tetap tampil di drawer mobile meski state desktop-nya collapsed. */}
-                <span className={cn(collapsed && 'md:hidden')}>{label}</span>
-              </Link>
-            )
-          })}
+              <div className="space-y-1">
+                {group.items.map((item) => {
+                  const href = hrefOf(item)
+                  const isActive = active === item
+                  const Icon = item.icon
+
+                  return (
+                    <Link
+                      key={href}
+                      href={href}
+                      aria-current={isActive ? 'page' : undefined}
+                      title={collapsed ? item.label : undefined}
+                      className={cn(
+                        'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+                        collapsed && 'md:justify-center md:px-0',
+                        isActive
+                          ? 'bg-sidebar-accent font-semibold text-sidebar-accent-foreground'
+                          : 'font-medium text-muted-foreground hover:bg-muted hover:text-foreground'
+                      )}
+                    >
+                      {isActive && (
+                        <span className="absolute top-1.5 bottom-1.5 left-0 w-1 rounded-r-full bg-primary" aria-hidden="true" />
+                      )}
+                      <Icon className={cn('h-4 w-4 shrink-0', isActive ? 'text-primary' : 'opacity-80 group-hover:opacity-100')} />
+                      {/* Label tetap tampil di drawer mobile meski state desktop-nya collapsed. */}
+                      <span className={cn(collapsed && 'md:hidden')}>{item.label}</span>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
       </aside>
     </>
