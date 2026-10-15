@@ -1,32 +1,34 @@
 import React, { useState } from 'react'
-import { Head, usePage } from '@inertiajs/react'
+import { Head } from '@inertiajs/react'
+import { usePermissions } from '@/lib/permissions'
 import Layout from '../layouts/Layout'
 import { Button } from '@/components/ui/button'
-import { SlidersHorizontal, Users } from 'lucide-react'
+import { KeyRound, SlidersHorizontal, Users } from 'lucide-react'
 import AppSettingsPanel from '@/components/AppSettingsPanel'
 import UsersPanel from '@/components/UsersPanel'
+import RolesPanel from '@/components/RolesPanel'
 
 // Tab awal bisa di-preselect via ?tab=users (mis. dari link langsung).
 function initialTab() {
-  if (typeof window === 'undefined') return 'app'
-  const t = new URLSearchParams(window.location.search).get('tab')
-  return ['app', 'users'].includes(t) ? t : 'app'
+  if (typeof window === 'undefined') return null
+  return new URLSearchParams(window.location.search).get('tab')
 }
 
-export default function Settings({ groups = {}, users = [], roles = [], companies = [], employees = [] }) {
-  const { props } = usePage()
-  const isAdmin = props?.auth?.user?.role === 'admin'
+export default function Settings({ groups = {}, users = [], roles = [], permissionCatalog = [], companies = [], employees = [] }) {
+  const { can } = usePermissions()
 
   const [tab, setTab] = useState(initialTab)
 
-  // Tab "User & Role" hanya untuk admin.
+  // Tiap tab muncul hanya bila permission-nya ada (server pun hanya mengirim
+  // data tab yang diizinkan).
   const tabs = [
-    { key: 'app', label: 'Setting Aplikasi', icon: SlidersHorizontal },
-    ...(isAdmin ? [{ key: 'users', label: 'User & Role', icon: Users }] : []),
+    ...(can('setting.manage') ? [{ key: 'app', label: 'Setting Aplikasi', icon: SlidersHorizontal }] : []),
+    ...(can('user.manage') ? [{ key: 'users', label: 'User', icon: Users }] : []),
+    ...(can('role.manage') ? [{ key: 'roles', label: 'Role & Permission', icon: KeyRound }] : []),
   ]
 
-  // Jaga-jaga bila non-admin membuka ?tab=users.
-  const activeTab = tab === 'users' && !isAdmin ? 'app' : tab
+  // Tab dari URL yang tak diizinkan / tak dikenal jatuh ke tab pertama.
+  const activeTab = tabs.some((t) => t.key === tab) ? tab : tabs[0]?.key
 
   return (
     <Layout>
@@ -59,9 +61,10 @@ export default function Settings({ groups = {}, users = [], roles = [], companie
         </div>
 
         {activeTab === 'app' && <AppSettingsPanel groups={groups} />}
-        {activeTab === 'users' && isAdmin && (
+        {activeTab === 'users' && (
           <UsersPanel users={users} roles={roles} companies={companies} employees={employees} />
         )}
+        {activeTab === 'roles' && <RolesPanel roles={roles} permissionCatalog={permissionCatalog} />}
       </div>
     </Layout>
   )

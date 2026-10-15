@@ -7,6 +7,7 @@ use App\Http\Controllers\FingerprintController;
 use App\Http\Controllers\MachineController;
 use App\Http\Controllers\ManualAttendanceController;
 use App\Http\Controllers\OrgController;
+use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SettingController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
@@ -17,7 +18,7 @@ use Illuminate\Support\Facades\Route;
  *
  * Otorisasi TIDAK ditaruh di file ini melainkan di dalam controller, karena tiap
  * aksi butuh dua pemeriksaan yang berbeda: permission (boleh aksinya) dan scope
- * outlet (boleh datanya). Rute yang cuma butuh peran admin tetap dijaga middleware.
+ * outlet (boleh datanya). Rute yang cukup dijaga permission memakai middleware `can:`.
  *
  * Endpoint yang dipanggil MESIN (iclock/*) ada di routes/web.php dan tetap publik.
  */
@@ -89,12 +90,20 @@ Route::post('/attendance-logs/{id}/review', [ManualAttendanceController::class, 
 Route::put('/settings', [SettingController::class, 'update']);
 
 // ===== Manajemen user, role & scope =====
-// Dijaga ganda: middleware `admin` di depan pintu, permission user.manage di dalam.
-Route::middleware('admin')->group(function () {
+// Pintu: permission user.manage / role.manage. Di dalam, pagar anti-eskalasi
+// AccessDelegation: tak seorang pun bisa memberi lebih dari yang ia punya.
+Route::middleware('can:user.manage')->group(function () {
     Route::get('/users', [UserController::class, 'index']);
     Route::post('/users', [UserController::class, 'store']);
     Route::put('/users/{id}', [UserController::class, 'update']);
     Route::delete('/users/{id}', [UserController::class, 'destroy']);
+});
+
+Route::middleware('can:role.manage')->group(function () {
+    Route::get('/roles', [RoleController::class, 'index']);
+    Route::post('/roles', [RoleController::class, 'store']);
+    Route::put('/roles/{id}', [RoleController::class, 'update']);
+    Route::delete('/roles/{id}', [RoleController::class, 'destroy']);
 });
 
 // ===== Dashboard =====

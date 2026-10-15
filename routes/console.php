@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\AuditLog;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -25,3 +26,6 @@ Schedule::command('machine:probe-tcp')->everyMinute()->withoutOverlapping();
 // Bersihkan arsip CSV/response kiriman Talenta yang melewati batas retensi
 // (setting mekari.file_retention_days) supaya disk VPS tak penuh.
 Schedule::command('talenta:prune-files')->dailyAt('02:30')->withoutOverlapping();
+
+// Buang audit log yang lebih tua dari AuditLog::RETENTION_DAYS (365 hari).
+Schedule::command('model:prune', ['--model' => [AuditLog::class]])->dailyAt('03:00')->withoutOverlapping();

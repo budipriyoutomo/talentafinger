@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Jobs\ResendFailedAttendance;
 use App\Models\AttendanceLog;
 use App\Models\AttendanceResendJob;
@@ -70,6 +71,10 @@ class AttendanceController extends Controller
         }
 
         $result = $this->sync->sendLogs(collect([$log]));
+        AuditLog::record('attendance.sent', ['type' => 'attendance_log', 'id' => $log->id, 'label' => $log->biometric_id_lokal], [
+            'force' => $request->boolean('force'),
+            'success' => (bool) $result['success'],
+        ]);
 
         return response()->json([
             'success' => $result['success'],
@@ -86,6 +91,10 @@ class AttendanceController extends Controller
         $this->authorizePermission($request, 'attendance.send');
 
         $result = $this->sync->sendPending($request->boolean('include_failed'), $request->user());
+        AuditLog::record('attendance.send_pending', changes: [
+            'include_failed' => $request->boolean('include_failed'),
+            'result' => $result['message'] ?? null,
+        ]);
 
         return response()->json($result);
     }
@@ -154,6 +163,12 @@ class AttendanceController extends Controller
         ]);
 
         ResendFailedAttendance::dispatch($job->id);
+        AuditLog::record('attendance.resend', ['type' => 'attendance_resend_job', 'id' => $job->id], [
+            'status' => $target,
+            'total' => $total,
+            'selected' => count($ids),
+            'filters' => array_filter($filters, fn ($v) => $v !== null && $v !== ''),
+        ]);
 
         return response()->json([
             'ok' => true,

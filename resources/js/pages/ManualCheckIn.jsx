@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Head, router } from '@inertiajs/react'
+import { Head, Link, router } from '@inertiajs/react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import ThemeToggle from '@/components/ThemeToggle'
 import { STATUS_LABEL, STATUS_VARIANT } from '@/components/ManualReviewDialog'
 import LiveCamera, { cameraSupported } from '@/components/LiveCamera'
-import { Camera, CheckCircle2, Loader2, LogOut, MapPin, RefreshCw, Send, ShieldAlert } from 'lucide-react'
+import { Camera, CheckCircle2, KeyRound, Loader2, LogOut, MapPin, RefreshCw, Send, ShieldAlert } from 'lucide-react'
 
 function csrf() {
   return document.querySelector('meta[name="csrf-token"]').content
@@ -146,6 +146,11 @@ export default function ManualCheckIn({ employee, blocked_reason, radius_meters,
           </div>
           <div className="flex items-center gap-1">
             <ThemeToggle className="text-muted-foreground" />
+            <Button asChild variant="ghost" size="sm" title="Ganti password">
+              <Link href="/password" aria-label="Ganti password">
+                <KeyRound className="h-4 w-4" />
+              </Link>
+            </Button>
             <Button variant="ghost" size="sm" className="gap-1" onClick={logout}>
               <LogOut className="h-4 w-4" /> Keluar
             </Button>

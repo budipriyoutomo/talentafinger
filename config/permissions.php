@@ -1,10 +1,11 @@
 <?php
 
 /**
- * SATU-SATUNYA sumber kebenaran untuk "role X boleh melakukan apa".
+ * KATALOG permission yang dikenal kode. Role mana memegang permission apa
+ * disimpan di database (lihat App\Models\Role), bukan di sini.
  *
  * Izin di aplikasi ini punya DUA sumbu yang saling lepas:
- *   1. PERMISSION (file ini) -> boleh melakukan AKSI apa (verb).
+ *   1. PERMISSION (role -> permission) -> boleh melakukan AKSI apa (verb).
  *   2. SCOPE (tabel user_scopes) -> boleh menyentuh DATA outlet mana (baris).
  * Keduanya harus lolos. Contoh: manager dengan scope Brand A boleh mengubah
  * karyawan, tapi hanya karyawan yang ada di outlet milik Brand A.
@@ -40,61 +41,29 @@ return [
 
         'org.manage' => 'Kelola struktur organisasi (Company, Brand, Outlet)',
         'setting.manage' => 'Ubah pengaturan aplikasi',
-        'user.manage' => 'Kelola user, role, dan scope akses',
+        'user.manage' => 'Kelola user dan scope akses',
+        'role.manage' => 'Kelola role & permission-nya',
+        'audit.view' => 'Lihat audit log (seluruh aktivitas, tanpa batas outlet)',
+
+        // Bukan aksi, melainkan pembebas sumbu SCOPE: pemiliknya melihat data
+        // SEMUA outlet tanpa perlu ditugaskan (role global, mis. HR Pusat).
+        'data.all' => 'Akses data semua outlet (tanpa batas scope)',
     ],
 
     /*
     |---------------------------------------------------------------------------
-    | Peta role -> permission
+    | Permission khusus role sistem
     |---------------------------------------------------------------------------
-    | Urutan = dari hak paling tinggi ke paling rendah. '*' berarti semua izin.
-    | Hanya `admin` yang berhak menyentuh user, setting, dan struktur organisasi,
-    | karena ketiganya bisa dipakai untuk memperluas hak akses diri sendiri.
+    | Tak bisa dicentang pada role buatan sendiri. Absen foto butuh akun yang
+    | ditautkan ke data karyawan, dan tautan itu hanya ada pada role `employee`.
     */
-    'roles' => [
-
-        // Akses penuh + kelola user/setting/organisasi. Tidak dibatasi outlet.
-        'admin' => ['*'],
-
-        // Penanggung jawab operasional di outlet-nya: kelola karyawan & sidik
-        // jari, kirim ulang absensi, review absen foto. Tidak boleh mengubah
-        // perangkat keras.
-        'manager' => [
-            'machine.view',
-            'attendance.view',
-            'attendance.send',
-            'attendance.review',
-            'employee.view',
-            'employee.manage',
-            'fingerprint.view',
-            'fingerprint.sync',
-            'fingerprint.delete',
-        ],
-
-        // Menjalankan operasi harian, tapi tidak boleh menghapus apa pun.
-        'operator' => [
-            'machine.view',
-            'attendance.view',
-            'attendance.send',
-            'employee.view',
-            'fingerprint.view',
-            'fingerprint.sync',
-        ],
-
-        // Baca saja.
-        'viewer' => [
-            'machine.view',
-            'attendance.view',
-            'employee.view',
-            'fingerprint.view',
-        ],
-
-        // Akun milik KARYAWAN (ditautkan ke employees lewat users.employee_id):
-        // hanya boleh absen pakai foto di halaman /absen. Tak punya akses ke
-        // data siapa pun di admin panel. Admin TIDAK otomatis bisa absen foto —
-        // butuh tautan employee, yang hanya dimiliki akun ber-role ini.
-        'employee' => [
-            'attendance.manual.create',
-        ],
+    'system_only' => [
+        'attendance.manual.create',
     ],
+
+    /*
+    | Peta role -> permission kini ada di DATABASE (tabel roles + role_permissions)
+    | dan dikelola dari /settings tab "Role". Isi awalnya (admin, manager,
+    | operator, viewer, employee) ditanam oleh migrasi create_roles_tables.
+    */
 ];

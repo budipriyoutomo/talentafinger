@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\Employee;
 use App\Models\Machine;
 use App\Services\FingerprintMasterService;
@@ -96,6 +97,7 @@ class EmployeeController extends Controller
         $employee = Employee::findOrFail($id);
         $this->authorize('delete', $employee);
 
+        AuditLog::record('employee.deleted', $employee, $employee->only(['name', 'biometric_id']));
         $employee->delete();
 
         return response()->json(['success' => true]);

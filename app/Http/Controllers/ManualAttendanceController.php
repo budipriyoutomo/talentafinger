@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\AttendanceLog;
 use App\Models\Employee;
 use App\Models\Outlet;
@@ -203,6 +204,12 @@ class ManualAttendanceController extends Controller
         if ($updated === 0) {
             return response()->json(['message' => 'Absen ini sudah direview sebelumnya.'], 422);
         }
+
+        AuditLog::record(
+            $data['action'] === 'approve' ? 'attendance.manual_approved' : 'attendance.manual_rejected',
+            ['type' => 'attendance_log', 'id' => $log->id, 'label' => $log->employee?->name],
+            ['note' => $data['note'] ?? null],
+        );
 
         return response()->json([
             'message' => $data['action'] === 'approve'

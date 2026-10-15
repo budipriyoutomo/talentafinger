@@ -14,21 +14,22 @@ function csrf() {
   return document.querySelector('meta[name="csrf-token"]').content
 }
 
-// Label & warna badge per role. Harus selaras dengan config/permissions.php.
-const ROLE_META = {
-  admin: { label: 'Admin', variant: 'success', desc: 'Akses penuh termasuk kelola user, pengaturan, & struktur organisasi. Tidak dibatasi outlet.' },
-  manager: { label: 'Manager', variant: 'default', desc: 'Kelola karyawan & sidik jari, kirim ulang absensi. Tidak bisa mengubah mesin.' },
-  operator: { label: 'Operator', variant: 'secondary', desc: 'Operasi harian & kirim absensi, tanpa hak menghapus.' },
-  viewer: { label: 'Viewer', variant: 'outline', desc: 'Hanya melihat data, tidak bisa mengubah apa pun.' },
-  employee: { label: 'Karyawan', variant: 'info', desc: 'Akun milik karyawan untuk absen pakai foto di halaman /absen. Tidak bisa membuka admin panel.' },
+// Warna badge untuk role bawaan; role buatan sendiri memakai 'secondary'.
+// Nama & deskripsi role datang dari server (tabel roles).
+const ROLE_VARIANT = {
+  admin: 'success',
+  manager: 'default',
+  operator: 'secondary',
+  viewer: 'outline',
+  employee: 'info',
 }
-const roleLabel = (r) => ROLE_META[r]?.label ?? r
 
 const emptyForm = {
   name: '',
   email: '',
   password: '',
   role: 'operator',
+  is_active: true,
   // Hanya untuk role employee: karyawan pemilik akun ini.
   employee_id: '',
   // Scope: outlet mana saja yang boleh disentuh. Mencentang company/brand
@@ -38,7 +39,11 @@ const emptyForm = {
   outlet_ids: [],
 }
 
-export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'operator', 'viewer'], companies = [], employees = [] }) {
+// `roles` = objek role dari server: { key, name, description, assignable,
+// full_data_access, ... }. `assignable` false = viewer tak boleh memberikannya
+// (pagar anti-eskalasi; server tetap memeriksa ulang).
+// `users` sudah disaring server ke user yang boleh dikelola viewer.
+export default function UsersPanel({ users = [], roles = [], companies = [], employees = [] }) {
   const { props } = usePage()
   const currentUserId = props?.auth?.user?.id
 
@@ -46,10 +51,14 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
   const [editingId, setEditingId] = useState(null)
   const [formData, setFormData] = useState(emptyForm)
 
-  // Admin tak pernah dibatasi outlet, dan akun karyawan tak melihat data
-  // outlet mana pun — pemilih scope disembunyikan untuk keduanya.
+  const roleOf = (key) => roles.find((r) => r.key === key)
+  const roleLabel = (key) => roleOf(key)?.name ?? key
+  const selectedRole = roleOf(formData.role)
+
+  // Role tanpa batas outlet (admin, data.all) tak butuh scope, dan akun
+  // karyawan tak melihat data outlet mana pun — pemilih scope disembunyikan.
   const isEmployeeRole = formData.role === 'employee'
-  const needsScope = formData.role !== 'admin' && !isEmployeeRole
+  const needsScope = !selectedRole?.full_data_access && !isEmployeeRole
 
   // Karyawan yang sudah punya akun lain tak bisa dipilih lagi (1 karyawan = 1 akun).
   const linkedEmployeeIds = new Set(
@@ -59,7 +68,11 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
 
   const openCreate = () => {
     setEditingId(null)
-    setFormData(emptyForm)
+    // Default 'operator' bila boleh diberikan, selain itu role pertama yang boleh.
+    const fallback = roleOf(emptyForm.role)?.assignable
+      ? emptyForm.role
+      : roles.find((r) => r.assignable)?.key ?? ''
+    setFormData({ ...emptyForm, role: fallback })
     setShowForm(true)
   }
 
@@ -72,6 +85,7 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
       password: '',
       role: u.role ?? 'operator',
       employee_id: u.employee_id ?? '',
+      is_active: u.is_active ?? true,
       company_ids: u.company_ids ?? [],
       brand_ids: u.brand_ids ?? [],
       outlet_ids: u.outlet_ids ?? [],
@@ -92,7 +106,7 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
 
   // Ringkasan scope untuk kolom tabel.
   const scopeSummary = (u) => {
-    if (u.role === 'admin') return 'Semua outlet'
+    if (roleOf(u.role)?.full_data_access) return 'Semua outlet'
     if (u.role === 'employee') {
       return u.employee_id ? `Karyawan: ${employeeName(u.employee_id) || '?'}` : null
     }
@@ -125,6 +139,7 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
       name: formData.name,
       email: formData.email,
       role: formData.role,
+      is_active: formData.is_active,
       employee_id: isEmployeeRole ? formData.employee_id || null : null,
       // Admin tak punya scope; kirim kosong supaya sisa penugasan lama dibersihkan.
       company_ids: needsScope ? formData.company_ids : [],
@@ -147,7 +162,7 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
       if (res.ok) {
         toast.success(editingId ? 'User diperbarui.' : 'User ditambahkan.')
         closeForm()
-        router.reload({ only: ['users'] })
+        router.reload({ only: ['users', 'roles'] })
       } else {
         const body = await res.json().catch(() => ({}))
         const msg = body?.errors
@@ -182,7 +197,7 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
         return
       }
       toast.success('User dihapus.')
-      router.reload({ only: ['users'] })
+      router.reload({ only: ['users', 'roles'] })
     } catch (err) {
       console.error('Failed to delete user:', err)
     }
@@ -199,6 +214,14 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
             {row.original.id === currentUserId && (
               <Badge variant="outline" className="text-[10px]">Anda</Badge>
             )}
+            {row.original.must_change_password && (
+              <Badge variant="warning" className="text-[10px]" title="Belum mengganti password sementara dari admin">
+                password sementara
+              </Badge>
+            )}
+            {row.original.is_active === false && (
+              <Badge variant="destructive" className="text-[10px]" title="Tidak bisa login">nonaktif</Badge>
+            )}
           </div>
         ),
       },
@@ -212,8 +235,23 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
         header: 'Role',
         cell: ({ row }) => {
           const r = row.getValue('role')
-          return <Badge variant={ROLE_META[r]?.variant ?? 'secondary'}>{roleLabel(r)}</Badge>
+          return <Badge variant={ROLE_VARIANT[r] ?? 'secondary'}>{roleLabel(r)}</Badge>
         },
+      },
+      {
+        accessorKey: 'last_login_at',
+        header: 'Login Terakhir',
+        cell: ({ row }) =>
+          row.original.last_login_at ? (
+            <div className="text-xs" title={row.original.last_login_ip ? `IP ${row.original.last_login_ip}` : undefined}>
+              <div className="font-mono">{row.original.last_login_at}</div>
+              {row.original.last_login_ip && (
+                <div className="font-mono text-muted-foreground">{row.original.last_login_ip}</div>
+              )}
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">belum pernah</span>
+          ),
       },
       {
         id: 'scope',
@@ -258,7 +296,7 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
         ),
       },
     ],
-    [currentUserId, employees]
+    [currentUserId, employees, roles]
   )
 
   return (
@@ -279,8 +317,8 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
             <CardTitle>{editingId ? 'Edit User' : 'Tambah User'}</CardTitle>
             <CardDescription>
               {editingId
-                ? 'Kosongkan password bila tidak ingin menggantinya.'
-                : 'Password minimal 8 karakter.'}
+                ? 'Kosongkan password bila tidak ingin menggantinya. Password baru bersifat sementara: user wajib menggantinya saat login berikutnya.'
+                : 'Password minimal 8 karakter, berisi huruf & angka. Bersifat sementara: user wajib menggantinya saat login pertama.'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -318,7 +356,7 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
                     required={!editingId}
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    placeholder={editingId ? '•••••••• (kosongkan untuk tetap)' : 'Min. 8 karakter'}
+                    placeholder={editingId ? '•••••••• (kosongkan untuk tetap)' : 'Min. 8 karakter, huruf & angka'}
                     autoComplete="new-password"
                   />
                 </div>
@@ -328,13 +366,33 @@ export default function UsersPanel({ users = [], roles = ['admin', 'manager', 'o
                     value={formData.role}
                     onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                   >
-                    {roles.map((r) => (
-                      <option key={r} value={r}>{roleLabel(r)}</option>
-                    ))}
+                    {/* Role yang tak boleh diberikan viewer disembunyikan, kecuali
+                        role user ini sekarang (ditampilkan terkunci). */}
+                    {roles
+                      .filter((r) => r.assignable || r.key === formData.role)
+                      .map((r) => (
+                        <option key={r.key} value={r.key} disabled={!r.assignable}>{r.name}</option>
+                      ))}
                   </Select>
-                  <p className="text-xs text-muted-foreground">{ROLE_META[formData.role]?.desc}</p>
+                  <p className="text-xs text-muted-foreground">{selectedRole?.description}</p>
                 </div>
               </div>
+
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4"
+                  checked={formData.is_active}
+                  disabled={editingId === currentUserId}
+                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                />
+                <span>
+                  <span className="font-medium">Akun aktif</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Nonaktif = tidak bisa login dan sesinya langsung terputus. Data & histori tetap tersimpan.
+                  </span>
+                </span>
+              </label>
 
               {isEmployeeRole && (
                 <div className="space-y-2">

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\Brand;
 use App\Models\Company;
 use App\Models\Outlet;
@@ -65,7 +66,9 @@ class OrgController extends Controller
 
         // cascadeOnDelete: brand & outlet di bawahnya ikut terhapus; penugasan
         // user ke sub-pohon ini ikut dibersihkan (lihat Company::booted).
-        Company::findOrFail($id)->delete();
+        $company = Company::findOrFail($id);
+        AuditLog::record('org.company_deleted', $company);
+        $company->delete();
 
         return response()->json(['success' => true]);
     }
@@ -111,7 +114,9 @@ class OrgController extends Controller
     {
         $this->authorizePermission($request, 'org.manage');
 
-        Brand::findOrFail($id)->delete();
+        $brand = Brand::findOrFail($id);
+        AuditLog::record('org.brand_deleted', $brand);
+        $brand->delete();
 
         return response()->json(['success' => true]);
     }
@@ -174,7 +179,9 @@ class OrgController extends Controller
     {
         $this->authorizePermission($request, 'org.manage');
 
-        Outlet::findOrFail($id)->delete();
+        $outlet = Outlet::findOrFail($id);
+        AuditLog::record('org.outlet_deleted', $outlet);
+        $outlet->delete();
 
         return response()->json(['success' => true]);
     }

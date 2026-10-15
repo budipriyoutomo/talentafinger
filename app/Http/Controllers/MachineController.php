@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\Machine;
 use App\Services\DeviceCommandService;
 use App\Services\ZkSyncService;
@@ -55,7 +56,10 @@ class MachineController extends Controller
 
         $this->assertOutletInScope($request, $data['outlet_id'] ?? null);
 
-        return Machine::create($data);
+        $machine = Machine::create($data);
+        AuditLog::record('machine.created', $machine, $data);
+
+        return $machine;
     }
 
     public function update(Request $request, string $id)
@@ -79,7 +83,13 @@ class MachineController extends Controller
             $this->assertOutletInScope($request, $data['outlet_id']);
         }
 
+        $before = $machine->only(array_keys($data));
         $machine->update($data);
+
+        $changes = AuditLog::diff($before, $machine->only(array_keys($data)));
+        if ($changes) {
+            AuditLog::record('machine.updated', $machine, $changes);
+        }
 
         return $machine;
     }
@@ -89,6 +99,7 @@ class MachineController extends Controller
         $machine = Machine::findOrFail($id);
         $this->authorize('delete', $machine);
 
+        AuditLog::record('machine.deleted', $machine, $machine->only(['serial_number', 'name', 'outlet_id', 'ip_address']));
         $machine->delete();
 
         return response()->json(['success' => true]);
@@ -178,6 +189,7 @@ class MachineController extends Controller
         }
 
         $result = $this->zk->delete($machine, $pin);
+        AuditLog::record('machine.device_user_deleted', $machine, ['pin' => $pin, 'ok' => (bool) ($result['ok'] ?? false)]);
 
         return response()->json($result, ($result['ok'] ?? false) ? 200 : 422);
     }
@@ -196,6 +208,7 @@ class MachineController extends Controller
         }
 
         $result = $this->zk->clearAttendance($machine);
+        AuditLog::record('machine.attendance_cleared', $machine, ['ok' => (bool) ($result['ok'] ?? false)]);
 
         return response()->json($result, ($result['ok'] ?? false) ? 200 : 422);
     }

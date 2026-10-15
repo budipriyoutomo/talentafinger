@@ -8,8 +8,10 @@ use App\Models\Employee;
 use App\Models\Company;
 use App\Models\Brand;
 use App\Models\Outlet;
+use App\Models\Role;
 use App\Models\Setting;
 use App\Models\User;
+use App\Services\AccessDelegation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -335,13 +337,49 @@ class DashboardController extends Controller
      * untuk dirender jadi beberapa kartu di frontend. Field bertipe password
      * tidak pernah dikirim nilainya ke frontend (hanya flag terisi/tidak).
      *
-     * Admin-only: memuat kredensial Talenta dan daftar seluruh user.
+     * Tab setting (kredensial Talenta) butuh setting.manage, tab user butuh
+     * user.manage, tab role butuh role.manage.
      */
     public function settings(Request $request)
     {
-        $this->authorizePermission($request, 'setting.manage');
+        // Tiga tab, tiga permission: halaman terbuka bila punya salah satunya,
+        // dan tiap tab hanya menerima datanya bila izinnya ada.
+        $user = $request->user();
+        $canSettings = $user->hasPermission('setting.manage');
+        $canUsers = $user->hasPermission('user.manage');
+        $canRoles = $user->hasPermission('role.manage');
 
-        $groups = Setting::orderBy('id')->get()
+        if (! $canSettings && ! $canUsers && ! $canRoles) {
+            $this->authorizePermission($request, 'setting.manage');
+        }
+
+        return Inertia::render('Settings', [
+            'groups' => $canSettings ? $this->settingGroups() : [],
+            ...($canUsers ? $this->userManagementProps($user) : []),
+            // Daftar role dibutuhkan tab User (pilihan role) maupun tab Role.
+            'roles' => $canUsers || $canRoles ? RoleController::listFor($user) : [],
+            'permissionCatalog' => $canRoles ? $this->permissionCatalog($user) : [],
+        ]);
+    }
+
+    /** Katalog permission untuk form role, ditandai mana yang boleh dicentang viewer. */
+    private function permissionCatalog(User $viewer): array
+    {
+        $grantable = AccessDelegation::for($viewer)->grantablePermissions();
+
+        return collect(Role::assignablePermissions())
+            ->map(fn ($key) => [
+                'key' => $key,
+                'label' => config("permissions.permissions.{$key}"),
+                'grantable' => in_array($key, $grantable, true),
+            ])
+            ->all();
+    }
+
+    /** Isi tab "Setting Aplikasi". */
+    private function settingGroups()
+    {
+        return Setting::orderBy('id')->get()
             ->map(fn ($s) => [
                 'key' => $s->key,
                 'group' => $s->group,
@@ -357,24 +395,21 @@ class DashboardController extends Controller
                 'preview' => $s->type === 'password' ? $this->maskSecret($s->value) : null,
             ])
             ->groupBy('group');
+    }
 
-        return Inertia::render('Settings', [
-            'groups' => $groups,
-            // Scope tiap user ikut dikirim supaya form bisa mencentang ulang
-            // Company/Brand/Outlet yang jadi wewenangnya.
-            'users' => User::with('dataScopes')->orderBy('name')->get()->map(fn (User $u) => [
-                ...$u->only(['id', 'name', 'email', 'role', 'employee_id', 'created_at']),
-                'company_ids' => $u->dataScopes->where('scope_type', 'company')->pluck('scope_id')->values(),
-                'brand_ids' => $u->dataScopes->where('scope_type', 'brand')->pluck('scope_id')->values(),
-                'outlet_ids' => $u->dataScopes->where('scope_type', 'outlet')->pluck('scope_id')->values(),
-            ]),
-            'roles' => User::ROLES,
-            // Pilihan karyawan untuk ditautkan ke akun ber-role `employee`.
-            'employees' => Employee::orderBy('name')
+    /** Isi tab "User & Role". */
+    private function userManagementProps(User $viewer): array
+    {
+        return [
+            // Hanya user yang boleh dikelola viewer (lihat AccessDelegation).
+            'users' => UserController::listFor($viewer),
+            // Pilihan karyawan untuk ditautkan ke akun ber-role `employee`,
+            // disaring ke scope pengelola.
+            'employees' => Employee::visibleTo($viewer)->orderBy('name')
                 ->get(['id', 'name', 'biometric_id', 'is_active', 'allow_manual_attendance']),
-            // Admin melihat seluruh pohon organisasi untuk menugaskan scope.
-            'companies' => $this->orgTree($request->user()),
-        ]);
+            // Pohon organisasi (disaring ke scope pengelola) untuk menugaskan scope.
+            'companies' => $this->orgTree($viewer),
+        ];
     }
 
     /** Pohon Company -> Brand -> Outlet, disaring ke scope user. */

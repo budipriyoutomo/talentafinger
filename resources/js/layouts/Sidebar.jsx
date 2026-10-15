@@ -9,6 +9,7 @@ import {
   MapPin,
   UserCircle,
   Fingerprint,
+  History,
   Settings,
   PanelLeftClose,
   PanelLeftOpen,
@@ -17,8 +18,8 @@ import {
 
 // `label` = teks di sidebar (pendek). `title` = judul halaman di topbar, dipakai
 // hanya kalau judulnya beda dari label (mis. "Logs" vs "Attendance Logs").
-// `permission` = izin minimum untuk melihat menunya; halaman itu sendiri tetap
-// dijaga di server (buka URL-nya langsung tanpa izin = 403).
+// `permission` = izin minimum untuk melihat menunya (array = cukup salah satu);
+// halaman itu sendiri tetap dijaga di server (buka URL-nya langsung tanpa izin = 403).
 export const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/machines', label: 'Machines', icon: Cpu, permission: 'machine.view' },
@@ -26,17 +27,22 @@ export const navItems = [
   { href: '/employee-presence', label: 'Absen per Mesin', title: 'Karyawan Absen di Mesin Mana', icon: MapPin, permission: 'attendance.view' },
   { href: '/employee-management', label: 'Employees', icon: UserCircle, permission: 'employee.view' },
   { href: '/fingerprints', label: 'Sidik Jari', icon: Fingerprint, permission: 'fingerprint.view' },
-  { href: '/settings', label: 'Pengaturan', icon: Settings, permission: 'setting.manage' },
+  { href: '/audit-logs', label: 'Audit Log', icon: History, permission: 'audit.view' },
+  { href: '/settings', label: 'Pengaturan', icon: Settings, permission: ['setting.manage', 'user.manage', 'role.manage'] },
 ]
 
 export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile }) {
   const { url } = usePage()
   const pathname = url.split('?')[0]
-  const { can } = usePermissions()
+  const { can, canAny } = usePermissions()
 
   const visibleItems = useMemo(
-    () => navItems.filter((item) => !item.permission || can(item.permission)),
-    [can]
+    () =>
+      navItems.filter((item) =>
+        !item.permission ||
+        (Array.isArray(item.permission) ? canAny(...item.permission) : can(item.permission))
+      ),
+    [can, canAny]
   )
 
   // Drawer ditutup saat pindah halaman dan saat Esc ditekan.

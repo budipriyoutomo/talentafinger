@@ -2,10 +2,12 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AdmsController;
+use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmployeePresenceController;
 use App\Http\Controllers\ManualAttendanceController;
+use App\Http\Controllers\PasswordController;
 
 // ADMS iClock endpoints — dipanggil mesin fingerprint, harus tetap PUBLIK.
 Route::get('/iclock/cdata', [AdmsController::class, 'handshake']);
@@ -30,9 +32,14 @@ Route::middleware('auth')->group(function () {
     Route::get('/employee-management', [DashboardController::class, 'employeeManagement']);
     Route::get('/fingerprints', [DashboardController::class, 'fingerprints']);
     Route::get('/settings', [DashboardController::class, 'settings']);
+    Route::get('/audit-logs', [AuditLogController::class, 'index']);
 
     // Halaman absen foto untuk akun karyawan (role employee).
     Route::get('/absen', [ManualAttendanceController::class, 'show']);
+
+    // Ganti password sendiri (semua role); juga tujuan paksa EnsurePasswordChanged.
+    Route::get('/password', [PasswordController::class, 'edit'])->name('password.edit');
+    Route::put('/password', [PasswordController::class, 'update'])->name('password.update');
 });
 
 Route::redirect('/', '/dashboard');

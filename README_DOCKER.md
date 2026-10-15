@@ -104,7 +104,9 @@ modprobe af_key esp4 xfrm_user   # dukungan IPsec (umumnya sudah ada)
    docker compose --env-file .env.docker run --rm -e RUN_SEED=true app php artisan db:seed --force
    ```
 
-   Login default: `admin@adms.local` / `password` (ganti setelah login).
+   Login dengan `ADMIN_EMAIL` / `ADMIN_PASSWORD` dari `.env.docker`. Seeder **menolak jalan**
+   di production bila `ADMIN_PASSWORD` kosong atau masih `password`, dan aplikasi memaksa
+   ganti password saat login pertama. Seed ulang tidak menimpa password admin yang sudah ada.
 
 Dashboard: `https://<domain-anda>` (lewat Cloudflare).
 

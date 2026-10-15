@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { router, usePage } from '@inertiajs/react'
+import { Link, router, usePage } from '@inertiajs/react'
 import { confirmToast } from '@/lib/confirm'
 import { Button } from '@/components/ui/button'
 import ThemeToggle from '@/components/ThemeToggle'
-import { LogOut, Menu } from 'lucide-react'
+import { KeyRound, LogOut, Menu } from 'lucide-react'
 import Sidebar, { navItems } from './Sidebar'
 
 const COLLAPSED_KEY = 'adms.sidebar.collapsed'
@@ -84,6 +84,11 @@ export default function Layout({ children }) {
                     <span className="block max-w-[180px] truncate text-xs text-muted-foreground">{user.email}</span>
                   </span>
                 </div>
+                <Button asChild variant="ghost" size="sm" className="text-muted-foreground" title="Ganti password">
+                  <Link href="/password" aria-label="Ganti password">
+                    <KeyRound className="h-4 w-4" />
+                  </Link>
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"

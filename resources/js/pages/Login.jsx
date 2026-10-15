@@ -1,5 +1,5 @@
 import React from 'react'
-import { Head, useForm } from '@inertiajs/react'
+import { Head, useForm, usePage } from '@inertiajs/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import ThemeToggle from '@/components/ThemeToggle'
@@ -12,6 +12,8 @@ const FEATURES = [
 ]
 
 export default function Login() {
+  // Mis. "Akun Anda dinonaktifkan" setelah sesi diputus EnsureAccountActive.
+  const { flash } = usePage().props
   const { data, setData, post, processing, errors } = useForm({
     email: '',
     password: '',
@@ -81,6 +83,12 @@ export default function Login() {
             <h1 className="text-2xl font-bold tracking-tight">Selamat datang kembali</h1>
             <p className="text-sm text-muted-foreground">Masuk untuk mengakses dashboard.</p>
           </div>
+
+          {flash?.error && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {flash.error}
+            </div>
+          )}
 
           <form onSubmit={submit} className="space-y-5">
             <div className="space-y-1.5">

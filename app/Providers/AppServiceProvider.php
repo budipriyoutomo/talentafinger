@@ -6,6 +6,7 @@ use Illuminate\Foundation\Events\DiagnosingHealth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Validation\Rules\Password;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -32,5 +33,9 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(DiagnosingHealth::class, function () {
             DB::select('select 1');
         });
+
+        // Kebijakan password SATU tempat: dipakai form user (admin) dan form
+        // ganti password sendiri lewat Password::defaults().
+        Password::defaults(fn () => Password::min(8)->letters()->numbers());
     }
 }

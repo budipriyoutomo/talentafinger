@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\Setting;
 use Illuminate\Http\Request;
 
@@ -24,7 +25,9 @@ class SettingController extends Controller
         ]);
 
         $known = Setting::pluck('type', 'key'); // key => type
+        $current = Setting::pluck('value', 'key');
         $updated = 0;
+        $changes = [];
 
         foreach ($data['settings'] as $key => $value) {
             if (! $known->has($key)) {
@@ -36,8 +39,21 @@ class SettingController extends Controller
                 continue;
             }
 
+            // Samakan dengan cara Setting::put menyimpan (bool -> '1'/'0').
+            $stored = is_bool($value) ? ($value ? '1' : '0') : (string) $value;
+            if ((string) $current->get($key) !== $stored) {
+                // Rahasia (kredensial Talenta) tak pernah masuk audit log.
+                $changes[$key] = $known[$key] === 'password'
+                    ? ['from' => null, 'to' => 'diganti']
+                    : ['from' => $current->get($key), 'to' => $value];
+            }
+
             Setting::put($key, $value);
             $updated++;
+        }
+
+        if ($changes) {
+            AuditLog::record('setting.updated', changes: $changes);
         }
 
         return response()->json([

@@ -1,6 +1,9 @@
 <?php
 
+use App\Http\Middleware\EnsureAccountActive;
+use App\Http\Middleware\EnsurePasswordChanged;
 use App\Http\Middleware\HandleInertiaRequests;
+use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -38,12 +41,13 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->web(append: [
+            // Sesi lain user otomatis keluar begitu password-nya diganti
+            // (sendiri maupun di-reset admin).
+            AuthenticateSession::class,
+            // Akun dinonaktifkan -> sesinya diputus di request berikutnya.
+            EnsureAccountActive::class,
             HandleInertiaRequests::class,
-        ]);
-
-        // Alias untuk membatasi endpoint hanya ke user ber-role admin.
-        $middleware->alias([
-            'admin' => \App\Http\Middleware\EnsureUserIsAdmin::class,
+            EnsurePasswordChanged::class,
         ]);
 
         // Tamu yang belum login diarahkan ke /login; yang sudah login dan membuka
