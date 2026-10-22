@@ -21,7 +21,7 @@ class PasswordController extends Controller
     {
         return Inertia::render('ChangePassword', [
             'forced' => (bool) $request->user()->must_change_password,
-            'home' => $request->user()->isEmployee() ? '/absen' : '/dashboard',
+            'home' => $request->user()->homePath(),
         ]);
     }
 
@@ -44,7 +44,7 @@ class PasswordController extends Controller
 
         AuditLog::record('auth.password_changed', $user);
 
-        return redirect($user->isEmployee() ? '/absen' : '/dashboard')
+        return redirect($user->homePath())
             ->with('success', 'Password berhasil diganti.');
     }
 }

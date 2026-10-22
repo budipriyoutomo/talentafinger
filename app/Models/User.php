@@ -53,6 +53,23 @@ class User extends Authenticatable
         return $this->role === Role::EMPLOYEE;
     }
 
+    /**
+     * Halaman "beranda" user: dashboard untuk pengguna panel; untuk akun
+     * karyawan /absen (absen foto), kecuali absen foto tak bisa ia pakai
+     * sementara absen QR aktif -> langsung ke /absen/qr.
+     */
+    public function homePath(): string
+    {
+        if (! $this->isEmployee()) {
+            return '/dashboard';
+        }
+
+        $photoUsable = Setting::value('attendance.manual_photo_enabled')
+            && $this->employee?->allow_manual_attendance;
+
+        return ! $photoUsable && Setting::value('attendance.qr_enabled') ? '/absen/qr' : '/absen';
+    }
+
     /** Role (baris tabel roles) milik user ini. */
     public function roleModel()
     {

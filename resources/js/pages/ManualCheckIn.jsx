@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Head, Link, router } from '@inertiajs/react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -7,16 +7,11 @@ import { Badge } from '@/components/ui/badge'
 import ThemeToggle from '@/components/ThemeToggle'
 import { STATUS_LABEL, STATUS_VARIANT } from '@/components/ManualReviewDialog'
 import LiveCamera, { cameraSupported } from '@/components/LiveCamera'
+import { useFreshLocation } from '@/lib/geolocation'
 import { Camera, CheckCircle2, KeyRound, Loader2, LogOut, MapPin, RefreshCw, Send, ShieldAlert } from 'lucide-react'
 
 function csrf() {
   return document.querySelector('meta[name="csrf-token"]').content
-}
-
-const GEO_ERRORS = {
-  1: 'Izin lokasi ditolak. Aktifkan izin lokasi untuk situs ini di pengaturan browser.',
-  2: 'Lokasi tidak tersedia. Pastikan GPS/lokasi HP aktif.',
-  3: 'Waktu habis saat mencari lokasi. Coba lagi di tempat terbuka.',
 }
 
 /**
@@ -24,10 +19,8 @@ const GEO_ERRORS = {
  * Mobile-first, tanpa layout admin. Alur: lokasi -> foto -> kirim ->
  * menunggu persetujuan supervisor.
  */
-export default function ManualCheckIn({ employee, blocked_reason, radius_meters, max_photo_kb, recent = [] }) {
-  const [position, setPosition] = useState(null) // { latitude, longitude, accuracy }
-  const [locating, setLocating] = useState(false)
-  const [geoError, setGeoError] = useState(null)
+export default function ManualCheckIn({ employee, blocked_reason, radius_meters, max_photo_kb, recent = [], qr_available }) {
+  const { position, locating, geoError, locate } = useFreshLocation()
 
   const [photo, setPhoto] = useState(null) // Blob siap kirim
   const [preview, setPreview] = useState(null)
@@ -38,37 +31,6 @@ export default function ManualCheckIn({ employee, blocked_reason, radius_meters,
 
   // Semua alasan blokir (fitur mati, belum diizinkan, outlet/koordinat) dari server.
   const blocked = blocked_reason
-
-  // Ambil lokasi SEGAR. Resolve { latitude, longitude, accuracy } atau null
-  // (pesan error sudah ditaruh di geoError).
-  const locate = useCallback(() => new Promise((resolve) => {
-    if (!('geolocation' in navigator)) {
-      setGeoError('Browser ini tidak mendukung lokasi.')
-      resolve(null)
-      return
-    }
-    setLocating(true)
-    setGeoError(null)
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const next = {
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-        }
-        setPosition(next)
-        setLocating(false)
-        resolve(next)
-      },
-      (err) => {
-        setPosition(null)
-        setGeoError(GEO_ERRORS[err.code] || err.message)
-        setLocating(false)
-        resolve(null)
-      },
-      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 },
-    )
-  }), [])
 
   // Langsung minta lokasi saat halaman dibuka (selama tidak diblokir).
   useEffect(() => {
@@ -163,7 +125,17 @@ export default function ManualCheckIn({ employee, blocked_reason, radius_meters,
           <Card>
             <CardContent className="flex gap-3 pt-6">
               <ShieldAlert className="h-5 w-5 shrink-0 text-amber-500" />
-              <p className="text-sm text-foreground">{blocked}</p>
+              <div className="space-y-2">
+                <p className="text-sm text-foreground">{blocked}</p>
+                {qr_available && (
+                  <p className="text-sm text-muted-foreground">
+                    Untuk absen di outlet, scan QR di layar outlet.{' '}
+                    <Link href="/absen/qr" className="font-medium text-indigo-600 hover:underline dark:text-indigo-400">
+                      Buka Absen QR
+                    </Link>
+                  </p>
+                )}
+              </div>
             </CardContent>
           </Card>
         ) : (

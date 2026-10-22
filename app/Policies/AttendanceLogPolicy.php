@@ -29,7 +29,7 @@ class AttendanceLogPolicy
             && $user->canAccessOutlet($log->owningOutletId());
     }
 
-    /** Setujui / tolak absen manual pakai foto. */
+    /** Setujui / tolak absen yang dikirim karyawan (foto / QR). */
     public function review(User $user, AttendanceLog $log): bool
     {
         return $log->isManual()

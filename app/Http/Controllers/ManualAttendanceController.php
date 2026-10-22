@@ -8,6 +8,7 @@ use App\Models\Employee;
 use App\Models\Outlet;
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\AttendancePhoto;
 use App\Support\Geo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -27,14 +28,11 @@ use Inertia\Inertia;
  */
 class ManualAttendanceController extends Controller
 {
-    /** Jeda minimal antar absen foto satu karyawan — cegah klik/kirim ganda. */
+    /**
+     * Jeda minimal antar absen karyawan — cegah klik/kirim ganda. Berlaku lintas
+     * sumber (foto + QR), lihat AttendanceLog::recentEmployeeSubmission().
+     */
     public const COOLDOWN_MINUTES = 5;
-
-    /** Disk PRIVAT: foto hanya bisa diambil lewat route photo() yang dijaga policy. */
-    private const PHOTO_DISK = 'local';
-
-    /** Batas ukuran foto dari sisi aplikasi (KB); batas PHP bisa lebih kecil. */
-    private const MAX_PHOTO_KB = 8192;
 
     /** Halaman /absen (mobile-first, tanpa layout admin). */
     public function show(Request $request)
@@ -51,8 +49,11 @@ class ManualAttendanceController extends Controller
             ] : null,
             'blocked_reason' => $this->blockedReason($user, $employee),
             'radius_meters' => $this->radius(),
-            'max_photo_kb' => $this->maxPhotoKb(),
+            'max_photo_kb' => AttendancePhoto::maxKb(),
             'recent' => $employee ? $this->recentLogs($employee) : [],
+            // Untuk petunjuk "scan QR di layar outlet" bila absen foto diblokir.
+            'qr_available' => (bool) Setting::value('attendance.qr_enabled')
+                && $user->hasPermission('attendance.qr.create'),
         ]);
     }
 
@@ -68,37 +69,10 @@ class ManualAttendanceController extends Controller
             return response()->json(['message' => $reason], 403);
         }
 
-        // Upload yang ditolak PHP (melebihi upload_max_filesize) tetap muncul
-        // sebagai file tak valid; tanpa cek ini validasi 'required' memberi pesan
-        // menyesatkan "Foto wajib diambil" padahal fotonya ada, cuma kebesaran.
-        $upload = $request->file('photo');
-        if ($upload && ! $upload->isValid()) {
-            return response()->json([
-                'message' => 'Foto terlalu besar untuk diunggah (maks ' . $this->maxPhotoMbLabel() . '). Ambil ulang foto.',
-            ], 422);
-        }
+        AttendancePhoto::assertUploadValid($request);
+        $data = $request->validate(AttendancePhoto::rules(), AttendancePhoto::messages());
 
-        $maxKb = $this->maxPhotoKb();
-        $data = $request->validate([
-            'photo' => "required|image|mimes:jpeg,jpg,png,webp|max:{$maxKb}",
-            'latitude' => 'required|numeric|between:-90,90',
-            'longitude' => 'required|numeric|between:-180,180',
-            'accuracy' => 'nullable|numeric|min:0',
-        ], [
-            'photo.required' => 'Foto wajib diambil.',
-            'photo.image' => 'File harus berupa foto.',
-            'photo.max' => 'Ukuran foto maksimal ' . $this->maxPhotoMbLabel() . '.',
-            'latitude.required' => 'Lokasi tidak terbaca. Izinkan akses lokasi di browser.',
-            'longitude.required' => 'Lokasi tidak terbaca. Izinkan akses lokasi di browser.',
-        ]);
-
-        $recent = AttendanceLog::where('employee_id', $employee->id)
-            ->where('source', AttendanceLog::SOURCE_MANUAL_PHOTO)
-            ->where('status_sync', '!=', 'rejected')
-            ->where('created_at', '>=', now()->subMinutes(self::COOLDOWN_MINUTES))
-            ->exists();
-
-        if ($recent) {
+        if (AttendanceLog::recentEmployeeSubmission($employee->id, self::COOLDOWN_MINUTES)) {
             return response()->json([
                 'message' => 'Anda baru saja absen. Tunggu ' . self::COOLDOWN_MINUTES . ' menit sebelum absen lagi.',
             ], 429);
@@ -129,7 +103,7 @@ class ManualAttendanceController extends Controller
             ], 422);
         }
 
-        $path = $request->file('photo')->store('attendance-photos/' . now()->format('Y/m'), self::PHOTO_DISK);
+        $path = AttendancePhoto::store($request->file('photo'));
 
         // Waktu disimpan dalam jam LOKAL perangkat (sama seperti log mesin), karena
         // itulah yang dikirim apa adanya ke Talenta.
@@ -152,7 +126,7 @@ class ManualAttendanceController extends Controller
             ]);
         } catch (\Throwable $e) {
             // Jangan tinggalkan foto yatim di disk bila log gagal tersimpan.
-            Storage::disk(self::PHOTO_DISK)->delete($path);
+            Storage::disk(AttendancePhoto::DISK)->delete($path);
             throw $e;
         }
 
@@ -168,7 +142,7 @@ class ManualAttendanceController extends Controller
         $log = AttendanceLog::with('machine')->findOrFail($id);
         $this->authorize('viewPhoto', $log);
 
-        $disk = Storage::disk(self::PHOTO_DISK);
+        $disk = Storage::disk(AttendancePhoto::DISK);
         abort_unless($log->photo_path && $disk->exists($log->photo_path), 404);
 
         return $disk->response($log->photo_path, null, [
@@ -208,7 +182,7 @@ class ManualAttendanceController extends Controller
         AuditLog::record(
             $data['action'] === 'approve' ? 'attendance.manual_approved' : 'attendance.manual_rejected',
             ['type' => 'attendance_log', 'id' => $log->id, 'label' => $log->employee?->name],
-            ['note' => $data['note'] ?? null],
+            ['source' => $log->source, 'note' => $data['note'] ?? null],
         );
 
         return response()->json([
@@ -240,41 +214,6 @@ class ManualAttendanceController extends Controller
     private function geofenceOutlets(Employee $employee)
     {
         return $employee->outlets->filter(fn (Outlet $o) => $o->is_active && $o->hasCoordinates());
-    }
-
-    /**
-     * Ukuran foto maksimal yang BENAR-BENAR bisa diterima (KB): yang terkecil
-     * dari batas aplikasi dan batas upload PHP (upload_max_filesize/post_max_size).
-     * Dikirim juga ke halaman supaya browser bisa menolak lebih awal.
-     */
-    private function maxPhotoKb(): int
-    {
-        $limits = array_filter([
-            self::MAX_PHOTO_KB,
-            $this->iniBytes('upload_max_filesize') / 1024,
-            $this->iniBytes('post_max_size') / 1024,
-        ]);
-
-        return (int) floor(min($limits));
-    }
-
-    private function maxPhotoMbLabel(): string
-    {
-        return rtrim(rtrim(number_format($this->maxPhotoKb() / 1024, 1), '0'), '.') . 'MB';
-    }
-
-    /** Nilai ini PHP seperti "2M" -> byte (0 = tak terbatas). */
-    private function iniBytes(string $key): int
-    {
-        $value = trim((string) ini_get($key));
-        $number = (int) $value;
-
-        return match (strtolower(substr($value, -1))) {
-            'g' => $number * 1024 ** 3,
-            'm' => $number * 1024 ** 2,
-            'k' => $number * 1024,
-            default => $number,
-        };
     }
 
     private function radius(): int

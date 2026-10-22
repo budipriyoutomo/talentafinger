@@ -38,6 +38,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->validateCsrfTokens(except: [
             'iclock/*',
+            // Tablet kiosk QR: autentikasi pakai token header, dan sesi
+            // browser tablet bisa kedaluwarsa kapan saja (cegah 419).
+            'kiosk/*',
         ]);
 
         $middleware->web(append: [

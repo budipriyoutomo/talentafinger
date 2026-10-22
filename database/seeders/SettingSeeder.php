@@ -191,6 +191,41 @@ class SettingSeeder extends Seeder
                 'description' => 'Jarak maksimal karyawan dari titik koordinat outletnya saat absen foto.',
                 'default' => '150',
             ],
+            [
+                'key' => 'attendance.qr_enabled',
+                'group' => 'attendance',
+                'type' => 'boolean',
+                'label' => 'Aktifkan Absen QR',
+                'description' => 'Saklar utama absen QR: karyawan scan QR di tablet outlet (menu Kiosk QR) pakai HP, '
+                    . 'lalu kirim selfie + lokasi. Hasilnya menunggu persetujuan supervisor seperti absen foto.',
+                'default' => '0',
+            ],
+            [
+                'key' => 'attendance.qr_radius',
+                'group' => 'attendance',
+                'type' => 'number',
+                'label' => 'Radius Absen QR (meter)',
+                'description' => 'Jarak maksimal HP karyawan dari titik koordinat outlet tempat tablet berada.',
+                'default' => '100',
+            ],
+            [
+                'key' => 'attendance.qr_rotate_seconds',
+                'group' => 'attendance',
+                'type' => 'number',
+                'label' => 'QR Berganti Tiap (detik)',
+                'description' => 'Seberapa sering QR di tablet berganti. Makin kecil makin sulit dipakai dari foto kiriman teman. '
+                    . 'Rentang 15–120, disarankan 30.',
+                'default' => '30',
+            ],
+            [
+                'key' => 'attendance.qr_scan_ttl',
+                'group' => 'attendance',
+                'type' => 'number',
+                'label' => 'Batas Waktu Setelah Scan (detik)',
+                'description' => 'Waktu bagi karyawan untuk mengambil selfie dan menekan Kirim setelah scan QR. '
+                    . 'Lewat dari ini harus scan ulang. Rentang 60–600, disarankan 180.',
+                'default' => '180',
+            ],
 
             // ===== Sinkronisasi jam mesin (AUTO) =====
             // Sinkron MANUAL selalu tersedia lewat tombol "Sync Time" di halaman Machines.

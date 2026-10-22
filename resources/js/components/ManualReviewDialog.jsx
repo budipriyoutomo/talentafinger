@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Camera, Check, Loader2, MapPin, X } from 'lucide-react'
+import { Camera, Check, Loader2, MapPin, QrCode, X } from 'lucide-react'
 
 function csrf() {
   return document.querySelector('meta[name="csrf-token"]').content
@@ -27,8 +27,14 @@ export const STATUS_VARIANT = {
   duplicate: 'secondary',
 }
 
+// Absen yang dikirim karyawan sendiri (cocok AttendanceLog::EMPLOYEE_SOURCES).
+export const EMPLOYEE_SOURCE = {
+  manual_photo: { label: 'Foto', title: 'Absen Foto', icon: Camera },
+  qr: { label: 'QR', title: 'Absen QR', icon: QrCode },
+}
+
 /**
- * Detail absen manual pakai foto + aksi review supervisor.
+ * Detail absen karyawan (foto / QR) + aksi review supervisor.
  *
  * Foto diambil dari route terlindung (/api/attendance-logs/{id}/photo), bukan
  * URL publik. Tombol Setujui/Tolak hanya tampil bila status masih
@@ -80,6 +86,8 @@ export default function ManualReviewDialog({ log, canReview, onClose, onReviewed
   }
 
   const hasCoords = manual.latitude != null && manual.longitude != null
+  const source = EMPLOYEE_SOURCE[log.source] || EMPLOYEE_SOURCE.manual_photo
+  const SourceIcon = source.icon
 
   return (
     <div
@@ -89,10 +97,10 @@ export default function ManualReviewDialog({ log, canReview, onClose, onReviewed
       <div className="mt-10 w-full max-w-lg rounded-2xl border bg-card text-card-foreground shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 p-4 dark:border-slate-800">
           <div className="flex items-center gap-2">
-            <Camera className="h-5 w-5 text-indigo-500" />
+            <SourceIcon className="h-5 w-5 text-indigo-500" />
             <div>
               <h3 className="font-semibold text-foreground">
-                Absen Foto — {log.employee_name || 'Karyawan'}
+                {source.title} — {log.employee_name || 'Karyawan'}
               </h3>
               <p className="text-xs text-muted-foreground">{log.timestamp_label}</p>
             </div>
@@ -123,8 +131,16 @@ export default function ManualReviewDialog({ log, canReview, onClose, onReviewed
                 {STATUS_LABEL[log.status_sync] || log.status_sync}
               </Badge>
             </dd>
+            <dt className="text-muted-foreground">Sumber</dt>
+            <dd className="text-foreground">{source.title}</dd>
             <dt className="text-muted-foreground">Outlet</dt>
             <dd className="text-foreground">{manual.outlet_name || '-'}</dd>
+            {log.source === 'qr' && (
+              <>
+                <dt className="text-muted-foreground">Kiosk</dt>
+                <dd className="text-foreground">{manual.kiosk_name || <span className="text-muted-foreground">(kiosk sudah dihapus)</span>}</dd>
+              </>
+            )}
             <dt className="text-muted-foreground">Jarak dari outlet</dt>
             <dd className="text-foreground">
               {manual.distance_meters != null ? `±${manual.distance_meters} m` : '-'}

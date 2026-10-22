@@ -17,13 +17,20 @@ class AttendanceLog extends Model
     /** Absen manual karyawan pakai foto + geolokasi (lihat ManualAttendanceController). */
     public const SOURCE_MANUAL_PHOTO = 'manual_photo';
 
-    public const SOURCES = [self::SOURCE_MACHINE, self::SOURCE_MANUAL_PHOTO];
+    /** Absen karyawan via scan QR di tablet outlet + selfie + geolokasi (lihat QrTokenService). */
+    public const SOURCE_QR = 'qr';
+
+    public const SOURCES = [self::SOURCE_MACHINE, self::SOURCE_MANUAL_PHOTO, self::SOURCE_QR];
+
+    /** Sumber yang dikirim KARYAWAN sendiri (punya foto, butuh review). */
+    public const EMPLOYEE_SOURCES = [self::SOURCE_MANUAL_PHOTO, self::SOURCE_QR];
 
     protected $fillable = [
         'machine_id',
         'source',
         'employee_id',
         'outlet_id',
+        'kiosk_id',
         'biometric_id_lokal',
         'timestamp',
         'status_sync',
@@ -82,14 +89,39 @@ class AttendanceLog extends Model
         return $this->belongsTo(Outlet::class);
     }
 
+    /** Tablet tempat QR di-scan (hanya log source='qr'). */
+    public function kiosk()
+    {
+        return $this->belongsTo(AttendanceKiosk::class, 'kiosk_id');
+    }
+
     public function reviewer()
     {
         return $this->belongsTo(User::class, 'reviewed_by');
     }
 
+    /**
+     * Absen yang dikirim karyawan sendiri: foto atau QR, bukan mesin. Log
+     * seperti ini punya foto, outlet_id sendiri, dan wajib direview.
+     */
     public function isManual(): bool
     {
-        return $this->source === self::SOURCE_MANUAL_PHOTO;
+        return in_array($this->source, self::EMPLOYEE_SOURCES, true);
+    }
+
+    /**
+     * Apakah karyawan baru saja mengirim absen sendiri (foto ATAU QR) dalam
+     * $minutes menit terakhir. Lintas sumber supaya absen foto lalu absen QR
+     * beberapa detik kemudian tetap terhitung kirim ganda. Yang ditolak tak
+     * dihitung: karyawan boleh langsung mencoba lagi.
+     */
+    public static function recentEmployeeSubmission(string $employeeId, int $minutes): bool
+    {
+        return static::where('employee_id', $employeeId)
+            ->whereIn('source', self::EMPLOYEE_SOURCES)
+            ->where('status_sync', '!=', 'rejected')
+            ->where('created_at', '>=', now()->subMinutes($minutes))
+            ->exists();
     }
 
     /**

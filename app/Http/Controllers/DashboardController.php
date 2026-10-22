@@ -29,9 +29,9 @@ class DashboardController extends Controller
     {
         $user = $request->user();
 
-        // Akun karyawan tak punya urusan di admin panel; halamannya hanya /absen.
+        // Akun karyawan tak punya urusan di admin panel; halamannya hanya /absen(/qr).
         if ($user->isEmployee()) {
-            return redirect('/absen');
+            return redirect($user->homePath());
         }
 
         // Status LIVE dari last_seen_at; kolom `status` di DB basi (lihat /api/machines).
@@ -186,7 +186,7 @@ class DashboardController extends Controller
         $perPage = in_array($perPage, [10, 50, 100, 250, 500], true) ? $perPage : 100;
 
         $paginator = AttendanceLog::visibleTo($user)
-            ->with(['machine', 'employee', 'outlet', 'reviewer'])
+            ->with(['machine', 'employee', 'outlet', 'kiosk', 'reviewer'])
             ->applyFilters($filters)
             ->orderBy('created_at', 'desc')
             ->paginate($perPage)
@@ -207,9 +207,11 @@ class DashboardController extends Controller
                 'employee_name' => $log->isManual()
                     ? $log->employee?->name
                     : $employeeByPin->get($log->biometric_id_lokal)?->name,
-                // Detail absen foto (null untuk log mesin).
+                // Detail absen karyawan: foto atau QR (null untuk log mesin).
                 'manual' => $log->isManual() ? [
                     'outlet_name' => $log->outlet?->name,
+                    // Tablet tempat QR di-scan (absen QR saja; null bila kiosk sudah dihapus).
+                    'kiosk_name' => $log->kiosk?->name,
                     'distance_meters' => $log->distance_meters,
                     'accuracy_meters' => $log->accuracy_meters,
                     'latitude' => $log->latitude,

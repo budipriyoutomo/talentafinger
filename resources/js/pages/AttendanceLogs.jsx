@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { usePermissions } from '@/lib/permissions'
-import ManualReviewDialog, { STATUS_LABEL, STATUS_VARIANT } from '@/components/ManualReviewDialog'
+import ManualReviewDialog, { EMPLOYEE_SOURCE, STATUS_LABEL, STATUS_VARIANT } from '@/components/ManualReviewDialog'
 import { Download, Send, Loader2, X, ChevronLeft, ChevronRight, RefreshCw, ListChecks, AlertTriangle, CheckCircle2, SlidersHorizontal, Camera, Cpu } from 'lucide-react'
 
 // Pilihan jeda auto-refresh (detik).
@@ -37,7 +37,14 @@ const SOURCE_OPTIONS = [
   { value: '', label: 'Semua Sumber' },
   { value: 'machine', label: 'Mesin' },
   { value: 'manual_photo', label: 'Foto Manual' },
+  { value: 'qr', label: 'QR Outlet' },
 ]
+
+// "Foto · Kopi Sudirman" / "QR · Kopi Sudirman · Kasir Depan" untuk log karyawan.
+const employeeSourceText = (log) =>
+  [EMPLOYEE_SOURCE[log.source]?.label || 'Foto', log.manual?.outlet_name || '-', log.manual?.kiosk_name]
+    .filter(Boolean)
+    .join(' · ')
 
 // Tab yang barisnya boleh dikirim ULANG (centang + tombol kirim ulang massal).
 // Harus cocok dengan AttendanceLog::RESENDABLE_STATUSES di server — server tetap
@@ -409,11 +416,12 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         header: 'Sumber',
         cell: ({ row }) => {
           const log = row.original
-          if (log.source === 'manual_photo') {
+          if (log.manual) {
+            const SourceIcon = EMPLOYEE_SOURCE[log.source]?.icon || Camera
             return (
               <div className="flex items-center gap-1.5 text-sm">
-                <Camera className="h-3.5 w-3.5 shrink-0 text-indigo-500" />
-                <span>Foto · {log.manual?.outlet_name || '-'}</span>
+                <SourceIcon className="h-3.5 w-3.5 shrink-0 text-indigo-500" />
+                <span>{employeeSourceText(log)}</span>
               </div>
             )
           }
@@ -469,9 +477,10 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         cell: ({ row }) => {
           const log = row.original
           const status = log.status_sync
-          const isManual = log.source === 'manual_photo'
+          // Absen karyawan (foto / QR) punya blok `manual` dari server.
+          const isManual = log.manual != null
           const needsReview = status === 'pending_review' && canReview
-          // Absen foto: selalu bisa dibuka (foto + lokasi); jadi tombol Review
+          // Absen foto / QR: selalu bisa dibuka (foto + lokasi); jadi tombol Review
           // selama masih menunggu persetujuan.
           const photoButton = isManual && (
             <Button
@@ -523,8 +532,8 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
       ['Timestamp', 'Sumber', 'Biometric ID', 'Employee', 'Status', 'Error'],
       ...logs.map(log => [
         formatTimestamp(log.timestamp),
-        log.source === 'manual_photo'
-          ? 'Foto Manual - ' + (log.manual?.outlet_name || '-')
+        log.manual
+          ? employeeSourceText(log)
           : machines.find(m => m.id === log.machine_id)?.name || 'Unknown',
         log.biometric_id_lokal,
         log.employee_name || 'N/A',
@@ -613,7 +622,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
                 <div>
                   <CardTitle>
                     {activeTab === 'pending_review'
-                      ? 'Absen Foto Menunggu Review'
+                      ? 'Absen Foto & QR Menunggu Review'
                       : activeTab === 'failed'
                       ? 'Data Gagal Kirim'
                       : activeTab === 'sent'
@@ -622,7 +631,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
                   </CardTitle>
                   <CardDescription>
                     {activeTab === 'pending_review'
-                      ? 'Absen manual pakai foto yang belum disetujui • tidak dikirim ke Talenta sebelum disetujui'
+                      ? 'Absen foto / QR dari karyawan yang belum disetujui • tidak dikirim ke Talenta sebelum disetujui'
                       : activeTab === 'failed'
                       ? 'Semua absensi berstatus failed • centang baris untuk pilih yang dikirim ulang, atau kosongkan centang untuk kirim ulang semua'
                       : activeTab === 'sent'

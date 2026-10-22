@@ -91,7 +91,7 @@ export default function Dashboard({ machines = [], stats = {} }) {
                 <Camera className="h-4 w-4" />
               </span>
               <span>
-                <span className="font-semibold">{stats_.review_pending} absen foto</span> menunggu persetujuan Anda
+                <span className="font-semibold">{stats_.review_pending} absen foto/QR</span> menunggu persetujuan Anda
               </span>
             </span>
             <span className="flex shrink-0 items-center gap-1 font-medium">

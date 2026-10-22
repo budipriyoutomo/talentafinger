@@ -26,11 +26,13 @@ return [
     'permissions' => [
         'machine.view' => 'Lihat daftar mesin & statusnya',
         'machine.manage' => 'Tambah, ubah, hapus mesin; sync jam; hapus log di perangkat',
+        'kiosk.manage' => 'Kelola kiosk QR absensi (tambah, aktivasi, nonaktifkan)',
 
         'attendance.view' => 'Lihat log absensi',
         'attendance.send' => 'Kirim / kirim ulang log absensi ke Talenta',
-        'attendance.review' => 'Setujui / tolak absen manual pakai foto',
+        'attendance.review' => 'Setujui / tolak absen karyawan (foto / QR)',
         'attendance.manual.create' => 'Absen manual pakai foto + lokasi (akun karyawan)',
+        'attendance.qr.create' => 'Absen QR di outlet (akun karyawan)',
 
         'employee.view' => 'Lihat master karyawan',
         'employee.manage' => 'Tambah, ubah, hapus karyawan',
@@ -59,10 +61,12 @@ return [
     'descriptions' => [
         'machine.view' => 'Membuka menu Machines: daftar mesin, status online, dan jam mesin.',
         'machine.manage' => 'Mengubah data mesin, sinkron jam, menghapus log di perangkat. Berdampak langsung ke mesin.',
+        'kiosk.manage' => 'Membuka menu Kiosk QR: mendaftarkan tablet outlet, membuat kode aktivasi, mereset tablet. Hanya untuk outlet yang ditugaskan.',
 
         'attendance.view' => 'Membuka menu Logs dan Absen per Mesin. Wajib untuk kirim maupun review absensi.',
         'attendance.send' => 'Tombol Kirim / Kirim Ulang absensi ke Talenta.',
-        'attendance.review' => 'Tombol Setujui / Tolak pada absen foto berstatus "menunggu review" di menu Logs. Hanya untuk outlet yang ditugaskan ke user.',
+        'attendance.review' => 'Tombol Setujui / Tolak pada absen foto & absen QR berstatus "menunggu review" di menu Logs. Hanya untuk outlet yang ditugaskan ke user.',
+        'attendance.qr.create' => 'Scan QR di layar outlet lalu kirim selfie + lokasi. Khusus akun karyawan.',
 
         'employee.view' => 'Membuka menu Employees (hanya melihat).',
         'employee.manage' => 'Menambah, mengubah, menghapus karyawan, termasuk izin absen foto per karyawan.',
@@ -101,11 +105,13 @@ return [
     |---------------------------------------------------------------------------
     | Permission khusus role sistem
     |---------------------------------------------------------------------------
-    | Tak bisa dicentang pada role buatan sendiri. Absen foto butuh akun yang
-    | ditautkan ke data karyawan, dan tautan itu hanya ada pada role `employee`.
+    | Tak bisa dicentang pada role buatan sendiri. Absen foto & absen QR butuh
+    | akun yang ditautkan ke data karyawan, dan tautan itu hanya ada pada role
+    | `employee`.
     */
     'system_only' => [
         'attendance.manual.create',
+        'attendance.qr.create',
     ],
 
     /*

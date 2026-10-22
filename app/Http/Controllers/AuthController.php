@@ -23,7 +23,7 @@ class AuthController extends Controller
     {
         // Sudah login -> langsung ke halaman utamanya.
         if (Auth::check()) {
-            return redirect($this->homeFor(Auth::user()));
+            return redirect(Auth::user()->homePath());
         }
 
         return Inertia::render('Login');
@@ -81,13 +81,7 @@ class AuthController extends Controller
         $user->forceFill(['last_login_at' => now(), 'last_login_ip' => $request->ip()])->saveQuietly();
         AuditLog::record('auth.login');
 
-        return redirect()->intended($this->homeFor($user));
-    }
-
-    /** Akun karyawan mendarat di halaman absen foto, sisanya di dashboard. */
-    private function homeFor(User $user): string
-    {
-        return $user->isEmployee() ? '/absen' : '/dashboard';
+        return redirect()->intended($user->homePath());
     }
 
     private function throttleKey(Request $request): string

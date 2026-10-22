@@ -6,14 +6,27 @@ use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmployeePresenceController;
+use App\Http\Controllers\KioskController;
+use App\Http\Controllers\KioskDeviceController;
 use App\Http\Controllers\ManualAttendanceController;
 use App\Http\Controllers\PasswordController;
+use App\Http\Controllers\QrAttendanceController;
 
 // ADMS iClock endpoints — dipanggil mesin fingerprint, harus tetap PUBLIK.
 Route::get('/iclock/cdata', [AdmsController::class, 'handshake']);
 Route::post('/iclock/cdata', [AdmsController::class, 'ingest']);
 Route::get('/iclock/getrequest', [AdmsController::class, 'getrequest']);
 Route::post('/iclock/devicecmd', [AdmsController::class, 'devicecmd']);
+
+// Tablet kiosk absen QR di outlet — PUBLIK, diautentikasi token device
+// (header X-Kiosk-Token), bukan login user. kiosk/* bebas CSRF (bootstrap/app.php).
+Route::get('/kiosk', [KioskDeviceController::class, 'show']);
+Route::post('/kiosk/activate', [KioskDeviceController::class, 'activate'])->middleware('throttle:10,1');
+Route::get('/kiosk/state', [KioskDeviceController::class, 'state'])->middleware('throttle:120,1');
+
+// Tujuan QR kiosk (?k&w&s) sekaligus halaman absen QR. Di luar grup auth:
+// tamu yang scan disimpan scan-nya di session, lalu diarahkan login.
+Route::get('/absen/qr', [QrAttendanceController::class, 'scan'])->middleware('throttle:30,1');
 
 // Auth (publik). Login pakai guest agar yang sudah login tidak melihat form lagi.
 Route::middleware('guest')->group(function () {
@@ -26,6 +39,7 @@ Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth')->n
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index']);
     Route::get('/machines', [DashboardController::class, 'machines']);
+    Route::get('/kiosks', [KioskController::class, 'page']);
     Route::get('/attendance-logs', [DashboardController::class, 'attendanceLogs']);
     // Laporan: karyawan absen di mesin mana saja + identitas mesinnya.
     Route::get('/employee-presence', [EmployeePresenceController::class, 'index']);

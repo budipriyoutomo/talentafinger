@@ -205,6 +205,21 @@ class ManualAttendanceTest extends TestCase
         $this->assertSame(1, AttendanceLog::count());
     }
 
+    public function test_cooldown_berlaku_lintas_sumber_qr(): void
+    {
+        $this->manualLog()->update(['source' => AttendanceLog::SOURCE_QR]);
+
+        $this->submit()->assertStatus(429);
+        $this->assertSame(1, AttendanceLog::count());
+    }
+
+    public function test_absen_yang_ditolak_tak_menghalangi_absen_lagi(): void
+    {
+        $this->manualLog('rejected');
+
+        $this->submit()->assertCreated();
+    }
+
     public function test_ditolak_bila_fitur_dimatikan(): void
     {
         config(['attendance.manual_photo_enabled' => false]);

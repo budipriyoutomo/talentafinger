@@ -4,9 +4,11 @@ use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\FingerprintController;
+use App\Http\Controllers\KioskController;
 use App\Http\Controllers\MachineController;
 use App\Http\Controllers\ManualAttendanceController;
 use App\Http\Controllers\OrgController;
+use App\Http\Controllers\QrAttendanceController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SettingController;
 use App\Http\Controllers\UserController;
@@ -34,6 +36,14 @@ Route::get('/machines/{id}/zk-info', [MachineController::class, 'zkInfo']);
 Route::get('/machines/{id}/zk-users', [MachineController::class, 'zkUsers']);
 Route::delete('/machines/{id}/zk-users/{pin}', [MachineController::class, 'deleteZkUser']);
 Route::post('/machines/{id}/clear-attendance', [MachineController::class, 'clearAttendance']);
+
+// ===== Kiosk QR absensi (tablet outlet) =====
+// Endpoint yang dipanggil TABLET (kiosk/*) ada di routes/web.php dan publik.
+Route::get('/kiosks', [KioskController::class, 'index']);
+Route::post('/kiosks', [KioskController::class, 'store']);
+Route::put('/kiosks/{id}', [KioskController::class, 'update']);
+Route::post('/kiosks/{id}/reset', [KioskController::class, 'reset']);
+Route::delete('/kiosks/{id}', [KioskController::class, 'destroy']);
 
 // ===== Sidik jari (TCP 4370 + master template di DB) =====
 Route::post('/fingerprint/sync', [FingerprintController::class, 'sync']);
@@ -84,6 +94,8 @@ Route::post('/attendance-logs/{id}/send', [AttendanceController::class, 'send'])
 // Dikirim karyawan (role employee) dari halaman /absen; direview supervisor.
 Route::post('/attendance/manual', [ManualAttendanceController::class, 'store']);
 Route::get('/attendance-logs/{id}/photo', [ManualAttendanceController::class, 'photo']);
+// Absen QR: dikirim dari /absen/qr setelah scan QR kiosk (lihat QrAttendanceController).
+Route::post('/attendance/qr', [QrAttendanceController::class, 'store'])->middleware('throttle:10,1');
 Route::post('/attendance-logs/{id}/review', [ManualAttendanceController::class, 'review']);
 
 // ===== Pengaturan aplikasi =====

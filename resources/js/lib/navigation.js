@@ -12,6 +12,7 @@ import {
   SlidersHorizontal,
   Users,
   KeyRound,
+  QrCode,
 } from 'lucide-react'
 
 /**
@@ -58,6 +59,7 @@ export const navGroups = [
     label: 'Perangkat',
     items: [
       { path: '/machines', label: 'Machines', icon: Cpu, permission: 'machine.view' },
+      { path: '/kiosks', label: 'Kiosk QR', title: 'Kiosk Absen QR', icon: QrCode, permission: 'kiosk.manage' },
     ],
   },
   {
