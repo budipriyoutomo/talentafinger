@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AuditLog;
 use App\Models\Employee;
 use App\Models\Machine;
+use App\Services\EmployeeMachineRemovalService;
 use App\Services\FingerprintMasterService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -66,7 +67,13 @@ class EmployeeController extends Controller
 
         $data = $request->validate([
             'name' => 'required',
-            'talenta_employee_id' => ['required', Rule::unique('employees', 'talenta_employee_id')->ignore($id)],
+            // Karyawan hasil sync Talenta boleh tanpa badgeno: barcode-nya memang
+            // belum diisi di Talenta (absensinya tertahan sampai diisi).
+            'talenta_employee_id' => [
+                Rule::requiredIf(fn () => $employee->talenta_user_id === null),
+                'nullable',
+                Rule::unique('employees', 'talenta_employee_id')->ignore($id),
+            ],
             'employee_code' => 'nullable',
             'biometric_id' => 'nullable|string|max:50',
             'outlet_ids' => 'nullable|array',
@@ -101,6 +108,52 @@ class EmployeeController extends Controller
         $employee->delete();
 
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Tombol "Hapus dari Mesin" (mis. karyawan resign): hapus user + sidik jari
+     * dari mesin terpilih via TCP 4370 di background, 1 job per mesin. Status
+     * tiap job dipolling di /api/fingerprint/delete-jobs/{id}.
+     */
+    public function removeFromMachines(Request $request, EmployeeMachineRemovalService $removal)
+    {
+        $this->authorizePermission($request, 'fingerprint.delete');
+
+        $data = $request->validate([
+            'employee_ids' => 'required|array|min:1',
+            'employee_ids.*' => 'required|uuid',
+            'machine_ids' => 'required|array|min:1',
+            'machine_ids.*' => 'required|uuid',
+        ]);
+
+        $user = $request->user();
+        $employeeIds = array_values(array_unique($data['employee_ids']));
+        $machineIds = array_values(array_unique($data['machine_ids']));
+
+        // Keduanya disaring ke scope user; id di luar scope = ditolak, bukan dilewati diam-diam.
+        $employees = Employee::visibleTo($user)->whereIn('id', $employeeIds)->get();
+        $machines = Machine::visibleTo($user)->whereIn('id', $machineIds)->get();
+        if ($employees->count() !== count($employeeIds) || $machines->count() !== count($machineIds)) {
+            return response()->json(['ok' => false, 'error' => 'Ada karyawan atau mesin di luar wewenang Anda.'], 403);
+        }
+
+        try {
+            $result = $removal->queue($employees, $machines, $user);
+        } catch (\RuntimeException $e) {
+            return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'jobs' => collect($result['jobs'])->map(fn ($j) => [
+                'job_id' => $j->id,
+                'machine_id' => $j->machine_id,
+                'machine' => $machines->firstWhere('id', $j->machine_id)?->name,
+                'total' => $j->progress_total,
+            ])->values(),
+            'skipped_employees' => $result['skipped_employees'],
+            'skipped_machines' => $result['skipped_machines'],
+        ], 202);
     }
 
     /**

@@ -10,6 +10,7 @@ use App\Models\Brand;
 use App\Models\Outlet;
 use App\Models\Role;
 use App\Models\Setting;
+use App\Models\TalentaEmployeeSyncRun;
 use App\Models\User;
 use App\Services\AccessDelegation;
 use Illuminate\Http\Request;
@@ -272,6 +273,12 @@ class DashboardController extends Controller
                     'allow_manual_attendance' => $e->allow_manual_attendance,
                     'fingerprints_count' => $e->biometric_templates_count,
                     'fingerprints_enrolled_at' => $e->biometric_templates_max_enrolled_at,
+                    // Hasil sync Talenta (badge "Tertaut", "Resign", "Tidak ada di Talenta").
+                    'talenta_user_id' => $e->talenta_user_id,
+                    'talenta_status' => $e->talenta_status,
+                    'resign_date' => $e->resign_date?->toDateString(),
+                    'job_position' => $e->job_position,
+                    'removed_from_machines_at' => $e->removed_from_machines_at?->toIso8601String(),
                     // Banyak outlet per karyawan; brand & company tersirat per outlet.
                     // Outlet di luar scope user sengaja TIDAK ditampilkan — ia tak
                     // perlu tahu karyawannya juga terdaftar di outlet perusahaan lain.
@@ -290,6 +297,9 @@ class DashboardController extends Controller
             // Hierarki untuk dropdown cascading di form karyawan + panel struktur.
             'companies' => $this->orgTree($user),
             'machines' => Machine::visibleTo($user)->get(),
+            // Label "Tidak ada di Talenta" baru bermakna setelah ada tarik data yang sukses.
+            'talentaPulled' => TalentaEmployeeSyncRun::where('type', TalentaEmployeeSyncRun::TYPE_PULL)
+                ->where('status', 'success')->exists(),
         ]);
     }
 

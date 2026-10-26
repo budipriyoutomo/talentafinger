@@ -62,6 +62,45 @@ class MekariTalentaService
     /** Batas lama menunggu kuota rate limit, supaya request web tak menggantung. */
     private const MAX_THROTTLE_WAIT_SECONDS = 60;
 
+    /** Kunci RateLimiter untuk list karyawan (sync karyawan Talenta). */
+    private const EMPLOYEE_RATE_LIMIT_KEY = 'mekari-api:employee';
+
+    /** Talenta membatasi `limit` list karyawan ke 50 (nilai lebih besar tetap dibalas 50). */
+    public const EMPLOYEE_PAGE_LIMIT = 50;
+
+    /**
+     * Ambil 1 halaman daftar karyawan: GET {base_url}/employee?limit=..&page=..
+     *
+     * Daftar sudah memuat karyawan Active DAN Resigned (tanpa filter status).
+     * Beda dengan import, GET ini idempoten -> boleh di-retry untuk semua
+     * kegagalan koneksi/5xx/429 (lihat isSafeToRetryRead).
+     */
+    public function listEmployees(int $page, int $limit = self::EMPLOYEE_PAGE_LIMIT): Response
+    {
+        $url = Setting::value('mekari.base_url') . '/employee?' . http_build_query(['limit' => $limit, 'page' => $page]);
+        $parts = parse_url($url);
+        // Signature HMAC wajib memakai path LENGKAP dengan query string.
+        $path = $parts['path'] . '?' . $parts['query'];
+
+        $this->throttle(self::EMPLOYEE_RATE_LIMIT_KEY);
+
+        $response = Http::withHeaders($this->buildSignature('GET', $path))
+            ->connectTimeout(10)
+            ->timeout(60)
+            ->retry(self::MAX_ATTEMPTS, fn (int $attempt) => $attempt * 1000, fn (Throwable $e) => $this->isSafeToRetryRead($e), throw: false)
+            ->get($url);
+
+        // Isi body TIDAK dicatat: berisi data pribadi karyawan.
+        $context = ['page' => $page, 'limit' => $limit, 'status' => $response->status()];
+        if ($response->successful()) {
+            Log::info('Talenta list employee OK', $context + ['rows' => count($response->json('data.employees') ?? [])]);
+        } else {
+            Log::error('Talenta list employee GAGAL', $context + ['body' => mb_substr($response->body(), 0, 500)]);
+        }
+
+        return $response;
+    }
+
     public function importFingerprint(string $csvContent): Response
     {
         $url = Setting::value('mekari.base_url') . '/attendance/import-fingerprint';
@@ -168,14 +207,15 @@ class MekariTalentaService
      * menggantung tanpa batas. Satu upload CSV = satu hit, retry di dalamnya
      * tidak dihitung terpisah.
      */
-    private function throttle(): void
+    private function throttle(string $key = self::RATE_LIMIT_KEY): void
     {
         $max = max(1, (int) Setting::value('mekari.rate_limit', 60));
 
-        if (RateLimiter::tooManyAttempts(self::RATE_LIMIT_KEY, $max)) {
-            $wait = min(RateLimiter::availableIn(self::RATE_LIMIT_KEY), self::MAX_THROTTLE_WAIT_SECONDS);
+        if (RateLimiter::tooManyAttempts($key, $max)) {
+            $wait = min(RateLimiter::availableIn($key), self::MAX_THROTTLE_WAIT_SECONDS);
 
-            Log::warning('Talenta rate limit tercapai, menunggu sebelum upload', [
+            Log::warning('Talenta rate limit tercapai, menunggu sebelum request', [
+                'key' => $key,
                 'limit_per_minute' => $max,
                 'wait_seconds' => $wait,
             ]);
@@ -183,7 +223,23 @@ class MekariTalentaService
             Sleep::sleep($wait);
         }
 
-        RateLimiter::hit(self::RATE_LIMIT_KEY, 60);
+        RateLimiter::hit($key, 60);
+    }
+
+    /** GET idempoten: aman diulang untuk gagal koneksi apa pun, 429, dan 5xx. */
+    private function isSafeToRetryRead(Throwable $e): bool
+    {
+        if ($e instanceof ConnectionException) {
+            return true;
+        }
+
+        if ($e instanceof RequestException) {
+            $status = $e->response->status();
+
+            return $status === 429 || $status >= 500;
+        }
+
+        return false;
     }
 
     /**

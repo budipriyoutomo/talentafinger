@@ -36,6 +36,7 @@ return [
 
         'employee.view' => 'Lihat master karyawan',
         'employee.manage' => 'Tambah, ubah, hapus karyawan',
+        'employee.talenta_sync' => 'Sinkron data karyawan dari Talenta',
 
         'fingerprint.view' => 'Lihat sidik jari terdaftar di mesin',
         'fingerprint.sync' => 'Tarik & sebar sidik jari antar mesin',
@@ -70,6 +71,8 @@ return [
 
         'employee.view' => 'Membuka menu Employees (hanya melihat).',
         'employee.manage' => 'Menambah, mengubah, menghapus karyawan, termasuk izin absen foto per karyawan.',
+        'employee.talenta_sync' => 'Membuka tab Sinkron Talenta: menarik data karyawan dari Talenta, menyelesaikan konflik, '
+            . 'dan mapping cabang ke outlet. Mengubah karyawan di SEMUA outlet, jadi juga butuh "Akses data semua outlet".',
 
         'fingerprint.view' => 'Membuka menu Sidik Jari.',
         'fingerprint.sync' => 'Menarik sidik jari dari mesin dan menyebarkannya ke mesin lain.',
@@ -97,6 +100,7 @@ return [
         'attendance.send' => ['attendance.view'],
         'attendance.review' => ['attendance.view'],
         'employee.manage' => ['employee.view'],
+        'employee.talenta_sync' => ['employee.manage', 'data.all'],
         'fingerprint.sync' => ['fingerprint.view'],
         'fingerprint.delete' => ['fingerprint.view'],
     ],

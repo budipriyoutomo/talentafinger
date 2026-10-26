@@ -11,6 +11,7 @@ use App\Http\Controllers\OrgController;
 use App\Http\Controllers\QrAttendanceController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SettingController;
+use App\Http\Controllers\TalentaEmployeeSyncController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -64,10 +65,23 @@ Route::delete('/employees/{id}/fingerprints', [FingerprintController::class, 'de
 // ===== Karyawan =====
 // Impor didaftarkan SEBELUM rute {id} agar tak tertangkap sebagai id.
 Route::post('/employees/import-from-machine', [EmployeeController::class, 'importFromMachine']);
+Route::post('/employees/remove-from-machines', [EmployeeController::class, 'removeFromMachines']);
 Route::get('/employees', [EmployeeController::class, 'index']);
 Route::post('/employees', [EmployeeController::class, 'store']);
 Route::put('/employees/{id}', [EmployeeController::class, 'update']);
 Route::delete('/employees/{id}', [EmployeeController::class, 'destroy']);
+
+// ===== Sinkron karyawan dari Talenta =====
+// Izin: employee.talenta_sync + akses data semua outlet (dicek di controller).
+Route::get('/talenta/employees/summary', [TalentaEmployeeSyncController::class, 'summary']);
+Route::get('/talenta/employees/runs', [TalentaEmployeeSyncController::class, 'runs']);
+Route::post('/talenta/employees/run', [TalentaEmployeeSyncController::class, 'start']);
+Route::get('/talenta/employees/branches', [TalentaEmployeeSyncController::class, 'branches']);
+Route::put('/talenta/employees/branches', [TalentaEmployeeSyncController::class, 'saveBranches']);
+Route::get('/talenta/employees', [TalentaEmployeeSyncController::class, 'index']);
+Route::post('/talenta/employees/{id}/link', [TalentaEmployeeSyncController::class, 'link']);
+Route::post('/talenta/employees/{id}/create', [TalentaEmployeeSyncController::class, 'createEmployee']);
+Route::post('/talenta/employees/{id}/ignore', [TalentaEmployeeSyncController::class, 'ignore']);
 
 // ===== Struktur organisasi: Company -> Brand -> Outlet =====
 // Membaca boleh siapa saja (disaring ke scope-nya); mengubah hanya admin.

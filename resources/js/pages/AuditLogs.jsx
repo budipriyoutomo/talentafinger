@@ -42,6 +42,12 @@ const ACTION_LABEL = {
   'org.company_deleted': 'Company dihapus',
   'org.brand_deleted': 'Brand dihapus',
   'org.outlet_deleted': 'Outlet dihapus',
+  'employee.talenta_created': 'Karyawan dibuat dari Talenta',
+  'employee.talenta_updated': 'Karyawan diperbarui dari Talenta',
+  'employee.talenta_deactivated': 'Karyawan dinonaktifkan (resign Talenta)',
+  'employee.talenta_linked': 'Karyawan ditautkan ke Talenta',
+  'employee.removed_from_machines': 'Karyawan dihapus dari mesin',
+  'talenta_employee.ignored': 'Data Talenta diabaikan',
 }
 
 const GROUP_LABEL = {
@@ -51,6 +57,7 @@ const GROUP_LABEL = {
   setting: 'Pengaturan',
   machine: 'Mesin',
   employee: 'Karyawan',
+  talenta_employee: 'Sinkron Talenta',
   attendance: 'Absensi / Talenta',
   org: 'Struktur organisasi',
 }

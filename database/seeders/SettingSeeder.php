@@ -248,6 +248,27 @@ class SettingSeeder extends Seeder
                 'default' => '1440',
             ],
 
+            // ===== Sync karyawan dari Talenta (AUTO) =====
+            // Sync MANUAL selalu tersedia lewat tombol di halaman Sinkron Talenta.
+            [
+                'key' => 'talenta.employee_sync',
+                'group' => 'talenta',
+                'type' => 'boolean',
+                'label' => 'Aktifkan Auto Sync Karyawan',
+                'description' => 'Bila aktif, data karyawan ditarik dari Talenta lalu disinkronkan ke daftar karyawan '
+                    . 'sesuai interval di bawah (karyawan baru dibuat, nama/jabatan diperbarui, yang resign dinonaktifkan). '
+                    . 'Hapus dari mesin tetap manual.',
+                'default' => '0',
+            ],
+            [
+                'key' => 'talenta.employee_sync_interval',
+                'group' => 'talenta',
+                'type' => 'number',
+                'label' => 'Interval Sync Karyawan (menit)',
+                'description' => 'Jeda antar sync karyawan. Mis. 1440 = sekali sehari. Satu kali tarik ±1 menit untuk ~650 karyawan.',
+                'default' => '1440',
+            ],
+
             // ===== Monitor jalur TCP 4370 (sidik jari) =====
             // Status ADMS (mesin -> server) terpisah dari jalur TCP (server -> mesin).
             // Probe ini mengecek apakah port 4370 mesin terjangkau dari server.

@@ -8,10 +8,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { Trash2, Plus, Pencil, Fingerprint, Send, X, SlidersHorizontal } from 'lucide-react'
+import { Trash2, Plus, Pencil, Fingerprint, Send, X, SlidersHorizontal, ServerOff } from 'lucide-react'
 import { usePermissions } from '@/lib/permissions'
 import EmployeeFingerprintDialog from '@/components/EmployeeFingerprintDialog'
 import BulkDistributeDialog from '@/components/BulkDistributeDialog'
+import RemoveFromMachinesDialog from '@/components/RemoveFromMachinesDialog'
 
 // company_id & brand_id hanya untuk dropdown cascading; yang disimpan ke
 // karyawan cuma outlet_ids (banyak outlet; brand & company tersirat dari outlet).
@@ -40,11 +41,15 @@ function csrf() {
   return document.querySelector('meta[name="csrf-token"]').content
 }
 
-export default function EmployeesPanel({ employees = [], companies = [], machines = [] }) {
-  // employee.manage = tambah/ubah/hapus karyawan; fingerprint.sync = sebar massal.
+// talentaPulled: sudah pernah ada tarik data Talenta yang sukses -> label
+// "Tidak ada di Talenta" baru bermakna setelah itu.
+export default function EmployeesPanel({ employees = [], companies = [], machines = [], talentaPulled = false }) {
+  // employee.manage = tambah/ubah/hapus karyawan; fingerprint.sync = sebar massal;
+  // fingerprint.delete = hapus user dari mesin (mis. karyawan resign).
   const { can } = usePermissions()
   const canManage = can('employee.manage')
   const canSyncFingerprint = can('fingerprint.sync')
+  const canDeleteFromMachine = can('fingerprint.delete')
 
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -63,12 +68,15 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
   const [fpFilter, setFpFilter] = useState('')               // '' | 'has' | 'none'
   const [biometricFilter, setBiometricFilter] = useState('') // '' | 'has' | 'none'
   const [placementFilter, setPlacementFilter] = useState('') // '' | 'placed' | 'unplaced'
+  const [talentaFilter, setTalentaFilter] = useState('')     // '' | 'linked' | 'unlinked' | 'resigned' | 'no_badge'
+  // Karyawan yang dialog "Hapus dari Mesin"-nya terbuka (null = tertutup).
+  const [removeTargets, setRemoveTargets] = useState(null)
   // Panel filter disembunyikan default, ditampilkan lewat toggle.
   const [showFilters, setShowFilters] = useState(false)
 
   const hasActiveFilters =
     companyFilter || brandFilter || outletFilter || statusFilter ||
-    privilegeFilter || fpFilter || biometricFilter || placementFilter
+    privilegeFilter || fpFilter || biometricFilter || placementFilter || talentaFilter
 
   const resetFilters = () => {
     setCompanyFilter('')
@@ -79,6 +87,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
     setFpFilter('')
     setBiometricFilter('')
     setPlacementFilter('')
+    setTalentaFilter('')
   }
 
   // Daftar brand & outlet diratakan dari hierarki companies untuk dropdown filter.
@@ -155,12 +164,23 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
         if (biometricFilter === 'none' && e.biometric_id) return false
         if (placementFilter === 'placed' && outlets.length === 0) return false
         if (placementFilter === 'unplaced' && outlets.length > 0) return false
+        if (talentaFilter === 'linked' && !e.talenta_user_id) return false
+        if (talentaFilter === 'unlinked' && e.talenta_user_id) return false
+        if (talentaFilter === 'resigned' && e.talenta_status !== 'Resigned') return false
+        if (talentaFilter === 'no_badge' && e.talenta_employee_id) return false
         return true
       }),
     [
       employees, companyFilter, brandFilter, outletFilter, statusFilter,
-      privilegeFilter, fpFilter, biometricFilter, placementFilter,
+      privilegeFilter, fpFilter, biometricFilter, placementFilter, talentaFilter,
     ]
+  )
+
+  // Kandidat "Hapus dari Mesin" massal: karyawan NONAKTIF ber-PIN yang lolos filter.
+  // Hanya ditawarkan saat filter aktif, supaya tak sengaja menghapus semua yang nonaktif.
+  const removableFiltered = useMemo(
+    () => filteredEmployees.filter((e) => !e.is_active && e.biometric_id),
+    [filteredEmployees]
   )
 
   // Hanya karyawan (yang lolos filter) dan punya template di DB yang bisa disebar.
@@ -216,6 +236,9 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
     setShowForm(true)
   }
 
+  // Karyawan yang sedang diedit tertaut ke Talenta? (Talenta ID boleh kosong.)
+  const editingLinked = !!(editingId && employees.find((e) => e.id === editingId)?.talenta_user_id)
+
   const closeForm = () => {
     setFormData(emptyForm)
     setEditingId(null)
@@ -257,7 +280,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
     // Backend butuh outlet_ids (+ field karyawan); company/brand cuma alat bantu UI.
     const payload = {
       name: formData.name,
-      talenta_employee_id: formData.talenta_employee_id,
+      talenta_employee_id: formData.talenta_employee_id || null,
       employee_code: formData.employee_code,
       biometric_id: formData.biometric_id || null,
       outlet_ids: formData.outlet_ids,
@@ -345,13 +368,33 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
             {row.original.allow_manual_attendance && (
               <Badge variant="info" title="Boleh absen pakai foto di halaman /absen">Absen foto</Badge>
             )}
+            {row.original.talenta_status === 'Resigned' && (
+              <Badge variant="warning" title={`Resign di Talenta${row.original.resign_date ? ` per ${row.original.resign_date}` : ''}`}>
+                Resign
+              </Badge>
+            )}
+            {row.original.talenta_user_id ? (
+              <Badge variant="outline" title="Tertaut ke data Talenta; nama & jabatan disinkronkan otomatis">Talenta</Badge>
+            ) : talentaPulled ? (
+              <Badge variant="secondary" title="Tidak ditemukan di data Talenta terakhir">Tidak ada di Talenta</Badge>
+            ) : null}
+            {row.original.removed_from_machines_at && (
+              <Badge variant="secondary" title={`Dihapus dari mesin ${new Date(row.original.removed_from_machines_at).toLocaleString('id-ID')}`}>
+                Dihapus dari mesin
+              </Badge>
+            )}
           </div>
         ),
       },
       {
         accessorKey: 'talenta_employee_id',
         header: 'Talenta ID',
-        cell: ({ row }) => <div className="font-mono text-sm">{row.getValue('talenta_employee_id')}</div>,
+        cell: ({ row }) =>
+          row.getValue('talenta_employee_id') ? (
+            <div className="font-mono text-sm">{row.getValue('talenta_employee_id')}</div>
+          ) : (
+            <span className="text-xs text-amber-600" title="Badgeno kosong: absensi tidak bisa dikirim ke Talenta">belum ada</span>
+          ),
       },
       {
         accessorKey: 'biometric_id',
@@ -414,24 +457,36 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
       {
         id: 'actions',
         header: 'Aksi',
-        cell: ({ row }) =>
-          canManage ? (
-            <div className="flex gap-2">
-              <Button onClick={() => openEdit(row.original)} variant="outline" size="sm" className="gap-1">
-                <Pencil className="h-3 w-3" />
-                Edit
-              </Button>
-              <Button onClick={() => deleteEmployee(row.original.id)} variant="destructive" size="sm" className="gap-1">
-                <Trash2 className="h-3 w-3" />
-                Hapus
-              </Button>
+        cell: ({ row }) => {
+          const e = row.original
+          const canRemove = canDeleteFromMachine && !e.is_active && e.biometric_id
+          if (!canManage && !canRemove) return <span className="text-xs text-muted-foreground">-</span>
+          return (
+            <div className="flex flex-wrap gap-2">
+              {canManage && (
+                <>
+                  <Button onClick={() => openEdit(e)} variant="outline" size="sm" className="gap-1">
+                    <Pencil className="h-3 w-3" />
+                    Edit
+                  </Button>
+                  <Button onClick={() => deleteEmployee(e.id)} variant="destructive" size="sm" className="gap-1">
+                    <Trash2 className="h-3 w-3" />
+                    Hapus
+                  </Button>
+                </>
+              )}
+              {canRemove && (
+                <Button onClick={() => setRemoveTargets([e])} variant="outline" size="sm" className="gap-1" title="Hapus user & sidik jari dari mesin">
+                  <ServerOff className="h-3 w-3" />
+                  Hapus dari Mesin
+                </Button>
+              )}
             </div>
-          ) : (
-            <span className="text-xs text-muted-foreground">-</span>
-          ),
+          )
+        },
       },
     ],
-    [selected, allSelected, selectableIds, canManage]
+    [selected, allSelected, selectableIds, canManage, canDeleteFromMachine, talentaPulled]
   )
 
   return (
@@ -449,6 +504,17 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                 Bersihkan
               </Button>
             </>
+          )}
+          {canDeleteFromMachine && hasActiveFilters && removableFiltered.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={() => setRemoveTargets(removableFiltered)}
+              className="gap-2"
+              title="Karyawan nonaktif ber-PIN yang lolos filter"
+            >
+              <ServerOff className="h-4 w-4" />
+              Hapus dari Mesin ({removableFiltered.length} nonaktif)
+            </Button>
           )}
         </div>
         {canManage && (
@@ -470,6 +536,11 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                 <h3 className="text-lg font-semibold text-foreground">
                   {editingId ? 'Edit Karyawan' : 'Tambah Karyawan'}
                 </h3>
+                {editingLinked && (
+                  <p className="text-sm text-indigo-600 dark:text-indigo-400">
+                    Tertaut ke Talenta: nama, kode, dan jabatan akan ditimpa otomatis saat sync berikutnya.
+                  </p>
+                )}
                 <p className="text-sm text-muted-foreground">
                   Master karyawan. Penempatan dipilih bertingkat: Company → Brand → Outlet.
                   Biometric ID (PIN) dipakai sebagai identitas di semua mesin.
@@ -493,7 +564,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                   <label className="text-sm font-medium text-foreground">Talenta Employee ID</label>
                   <Input
                     type="text"
-                    required
+                    required={!editingLinked}
                     value={formData.talenta_employee_id}
                     onChange={(e) => setFormData({ ...formData, talenta_employee_id: e.target.value })}
                     placeholder="e.g., EMP001"
@@ -745,6 +816,16 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                   <option value="unplaced">Tanpa outlet</option>
                 </Select>
               </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Talenta</label>
+                <Select value={talentaFilter} onChange={(e) => setTalentaFilter(e.target.value)}>
+                  <option value="">Semua</option>
+                  <option value="linked">Tertaut Talenta</option>
+                  <option value="unlinked">Tidak ada di Talenta</option>
+                  <option value="resigned">Resign di Talenta</option>
+                  <option value="no_badge">Talenta ID kosong</option>
+                </Select>
+              </div>
             </div>
             {hasActiveFilters && (
               <div>
@@ -768,6 +849,14 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
           employee={employees.find((e) => e.id === fpEmployee.id) ?? fpEmployee}
           machines={machines}
           onClose={() => setFpEmployee(null)}
+        />
+      )}
+
+      {removeTargets && (
+        <RemoveFromMachinesDialog
+          employees={removeTargets}
+          machines={machines}
+          onClose={() => setRemoveTargets(null)}
         />
       )}
 

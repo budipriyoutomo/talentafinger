@@ -2,32 +2,36 @@ import React, { useState } from 'react'
 import { Head } from '@inertiajs/react'
 import Layout from '../layouts/Layout'
 import { Button } from '@/components/ui/button'
-import { UserCircle, Building2 } from 'lucide-react'
+import { UserCircle, Building2, RefreshCw } from 'lucide-react'
 import { usePermissions } from '@/lib/permissions'
 import EmployeesPanel from '@/components/EmployeesPanel'
 import OrgStructurePanel from '@/components/OrgStructurePanel'
+import TalentaSyncPanel from '@/components/TalentaSyncPanel'
 
-// Tab awal bisa di-preselect via ?tab=structure (mis. dari link lama).
+// Tab awal bisa di-preselect via ?tab=structure / ?tab=talenta.
 function initialTab() {
   if (typeof window === 'undefined') return 'employees'
   const t = new URLSearchParams(window.location.search).get('tab')
-  return t === 'structure' ? t : 'employees'
+  return ['structure', 'talenta'].includes(t) ? t : 'employees'
 }
 
-export default function EmployeeManagement({ employees = [], machines = [], companies = [] }) {
+export default function EmployeeManagement({ employees = [], machines = [], companies = [], talentaPulled = false }) {
   const [tab, setTab] = useState(initialTab)
   // Struktur organisasi hanya bisa diubah admin (org.manage), dan tab ini murni
   // untuk mengubahnya — jadi tak perlu ditampilkan ke yang lain.
   const { can } = usePermissions()
   const canManageOrg = can('org.manage')
+  // Sync Talenta mengubah karyawan di semua outlet -> butuh data.all juga (dicek ulang di server).
+  const canSyncTalenta = can('employee.talenta_sync') && can('data.all')
 
   const tabs = [
     { key: 'employees', label: 'Karyawan', icon: UserCircle },
+    ...(canSyncTalenta ? [{ key: 'talenta', label: 'Sinkron Talenta', icon: RefreshCw }] : []),
     ...(canManageOrg ? [{ key: 'structure', label: 'Struktur Organisasi', icon: Building2 }] : []),
   ]
 
-  // Jaga-jaga bila non-admin membuka ?tab=structure.
-  const activeTab = tab === 'structure' && !canManageOrg ? 'employees' : tab
+  // Jaga-jaga bila user tanpa izin membuka ?tab=structure / ?tab=talenta.
+  const activeTab = tabs.some((t) => t.key === tab) ? tab : 'employees'
 
   return (
     <Layout>
@@ -53,7 +57,10 @@ export default function EmployeeManagement({ employees = [], machines = [], comp
           ))}
         </div>
 
-        {activeTab === 'employees' && <EmployeesPanel employees={employees} companies={companies} machines={machines} />}
+        {activeTab === 'employees' && (
+          <EmployeesPanel employees={employees} companies={companies} machines={machines} talentaPulled={talentaPulled} />
+        )}
+        {activeTab === 'talenta' && canSyncTalenta && <TalentaSyncPanel employees={employees} />}
         {activeTab === 'structure' && canManageOrg && <OrgStructurePanel companies={companies} />}
       </div>
     </Layout>

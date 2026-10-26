@@ -30,7 +30,8 @@ RUN composer install \
 
 # ---- Stage 3: runtime PHP-FPM ----
 # Laravel 13 (composer.lock) menuntut php >= 8.4.1; jangan turun ke 8.3.
-FROM php:8.4-fpm-bookworm AS runtime
+FROM php:8.4.27-fpm-bookworm AS runtime
+
 
 # Paket sistem + toolchain ekstensi + Python untuk scripts/zk_sync.py
 RUN apt-get update && apt-get install -y --no-install-recommends \
