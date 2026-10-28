@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Head, Link, router } from '@inertiajs/react'
+import { Head, Link, router, usePage } from '@inertiajs/react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -7,13 +7,34 @@ import { Badge } from '@/components/ui/badge'
 import ThemeToggle from '@/components/ThemeToggle'
 import { STATUS_LABEL, STATUS_VARIANT } from '@/components/ManualReviewDialog'
 import LiveCamera, { cameraSupported } from '@/components/LiveCamera'
+import QrScanner from '@/components/QrScanner'
 import { useFreshLocation } from '@/lib/geolocation'
 import {
-  Camera, CheckCircle2, KeyRound, Loader2, LogOut, MapPin, QrCode, RefreshCw, ScanLine, Send, ShieldAlert, Timer,
+  Camera, CheckCircle2, KeyRound, LayoutDashboard, Loader2, LogOut, MapPin, QrCode, RefreshCw, ScanLine, Send, ShieldAlert, Timer,
 } from 'lucide-react'
 
 function csrf() {
   return document.querySelector('meta[name="csrf-token"]').content
+}
+
+// Parameter token QR kiosk (lihat QrTokenService::urlFor).
+const QR_PARAMS = ['k', 'w', 's']
+
+/**
+ * Teks QR -> URL relatif /absen/qr?k&w&s di origin halaman ini, atau null bila
+ * bukan QR absen outlet. Origin QR sengaja diabaikan: session login ada di
+ * origin halaman ini, dan tokennya tetap diverifikasi server.
+ */
+function scanUrlFrom(text) {
+  let url
+  try {
+    url = new URL(text, window.location.origin)
+  } catch {
+    return null
+  }
+  if (!url.pathname.endsWith('/absen/qr') || !QR_PARAMS.every((p) => url.searchParams.get(p))) return null
+  const query = new URLSearchParams(QR_PARAMS.map((p) => [p, url.searchParams.get(p)]))
+  return `${window.location.pathname}?${query}`
 }
 
 const formatCountdown = (seconds) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
@@ -41,7 +62,8 @@ function useCountdown(initial) {
 
 /**
  * Halaman absen QR untuk akun KARYAWAN (role employee). Dibuka otomatis
- * setelah scan QR di tablet kiosk outlet. Alur: lokasi -> selfie -> kirim ->
+ * setelah scan QR di tablet kiosk outlet, atau scan langsung dari halaman ini
+ * (QrScanner) bila karyawan sudah login. Alur: lokasi -> selfie -> kirim ->
  * menunggu persetujuan supervisor.
  */
 export default function QrCheckIn({
@@ -52,6 +74,10 @@ export default function QrCheckIn({
   const [photo, setPhoto] = useState(null) // Blob siap kirim
   const [preview, setPreview] = useState(null)
   const [cameraOpen, setCameraOpen] = useState(false)
+
+  // Belum ada scan: scanner QR langsung dibuka begitu halaman tampil.
+  const [scannerOpen, setScannerOpen] = useState(() => !scan && !blocked_reason && cameraSupported())
+  const [scannerHint, setScannerHint] = useState(null)
 
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState(null) // { ok, message }
@@ -118,7 +144,28 @@ export default function QrCheckIn({
     }
   }
 
+  const openScanner = () => {
+    setScannerHint(null)
+    setScannerOpen(true)
+  }
+
+  // false = bukan QR absen, scanner lanjut memindai.
+  const onQrDetected = (text) => {
+    const url = scanUrlFrom(text)
+    if (!url) {
+      setScannerHint('QR ini bukan QR absen outlet. Arahkan ke QR di tablet outlet.')
+      return false
+    }
+    setScannerOpen(false)
+    setResult(null)
+    setPhoto(null)
+    setPreview(null)
+    router.visit(url)
+  }
+
   const logout = () => router.post('/logout')
+  // User role lain yang juga karyawan (mis. manager) bisa kembali ke admin panel.
+  const canOpenPanel = usePage().props.auth?.user?.role !== 'employee'
 
   return (
     <div className="min-h-screen bg-background">
@@ -134,6 +181,13 @@ export default function QrCheckIn({
             {can_manual_photo && (
               <Button asChild variant="ghost" size="sm" className="gap-1" title="Absen pakai foto (tanpa QR)">
                 <Link href="/absen"><Camera className="h-4 w-4" /> Absen Foto</Link>
+              </Button>
+            )}
+            {canOpenPanel && (
+              <Button asChild variant="ghost" size="sm" title="Kembali ke dashboard">
+                <Link href="/dashboard" aria-label="Dashboard">
+                  <LayoutDashboard className="h-4 w-4" />
+                </Link>
               </Button>
             )}
             <ThemeToggle className="text-muted-foreground" />
@@ -170,10 +224,15 @@ export default function QrCheckIn({
           <Card>
             <CardContent className="flex flex-col items-center gap-3 pt-6 text-center">
               <ScanLine className="h-10 w-10 text-indigo-500" />
-              <p className="font-medium text-foreground">Buka kamera HP, arahkan ke QR di layar outlet.</p>
+              <p className="font-medium text-foreground">Scan QR di layar tablet outlet.</p>
+              {cameraSupported() && (
+                <Button size="lg" className="gap-2" onClick={openScanner}>
+                  <ScanLine className="h-4 w-4" /> Scan QR
+                </Button>
+              )}
               <p className="text-sm text-muted-foreground">
-                Halaman ini akan terbuka otomatis setelah QR terbaca. QR berganti tiap beberapa detik,
-                jadi scan langsung dari layar outlet, bukan dari foto.
+                QR berganti tiap beberapa detik, jadi scan langsung dari layar outlet, bukan dari foto.
+                Bisa juga lewat aplikasi kamera HP.
               </p>
             </CardContent>
           </Card>
@@ -193,6 +252,11 @@ export default function QrCheckIn({
                 <Timer className="h-4 w-4" />
                 {expired ? 'Waktu habis — scan ulang QR di layar outlet.' : `Sisa waktu ${formatCountdown(secondsLeft)}`}
               </p>
+              {expired && cameraSupported() && (
+                <Button size="sm" className="w-fit gap-1" onClick={openScanner}>
+                  <ScanLine className="h-3.5 w-3.5" /> Scan ulang
+                </Button>
+              )}
             </CardHeader>
             <CardContent className="space-y-5">
               {/* 1. Lokasi */}
@@ -254,6 +318,10 @@ export default function QrCheckIn({
               </Button>
             </CardContent>
           </Card>
+        )}
+
+        {scannerOpen && (
+          <QrScanner onDetected={onQrDetected} onClose={() => setScannerOpen(false)} hint={scannerHint} />
         )}
 
         {result && (

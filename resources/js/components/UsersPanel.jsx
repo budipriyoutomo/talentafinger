@@ -106,20 +106,21 @@ export default function UsersPanel({ users = [], roles = [], companies = [], emp
 
   // Ringkasan scope untuk kolom tabel.
   const scopeSummary = (u) => {
-    if (roleOf(u.role)?.full_data_access) return 'Semua outlet'
-    if (u.role === 'employee') {
-      return u.employee_id ? `Karyawan: ${employeeName(u.employee_id) || '?'}` : null
-    }
+    const linked = u.employee_id ? `Karyawan: ${employeeName(u.employee_id) || '?'}` : null
+    if (u.role === 'employee') return linked
+    if (roleOf(u.role)?.full_data_access) return ['Semua outlet', linked].filter(Boolean).join(' · ')
 
     const count =
       (u.company_ids?.length ?? 0) + (u.brand_ids?.length ?? 0) + (u.outlet_ids?.length ?? 0)
 
-    if (count === 0) return null
+    if (count === 0) return linked
 
     const parts = []
     if (u.company_ids?.length) parts.push(`${u.company_ids.length} company`)
     if (u.brand_ids?.length) parts.push(`${u.brand_ids.length} brand`)
     if (u.outlet_ids?.length) parts.push(`${u.outlet_ids.length} outlet`)
+
+    if (linked) parts.push(linked)
 
     return parts.join(' · ')
   }
@@ -140,7 +141,8 @@ export default function UsersPanel({ users = [], roles = [], companies = [], emp
       email: formData.email,
       role: formData.role,
       is_active: formData.is_active,
-      employee_id: isEmployeeRole ? formData.employee_id || null : null,
+      // Role apa pun boleh ditautkan ke karyawan (wajib untuk role Karyawan).
+      employee_id: formData.employee_id || null,
       // Admin tak punya scope; kirim kosong supaya sisa penugasan lama dibersihkan.
       company_ids: needsScope ? formData.company_ids : [],
       brand_ids: needsScope ? formData.brand_ids : [],
@@ -394,30 +396,30 @@ export default function UsersPanel({ users = [], roles = [], companies = [], emp
                 </span>
               </label>
 
-              {isEmployeeRole && (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Karyawan</label>
-                  <Select
-                    required
-                    value={formData.employee_id}
-                    onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })}
-                  >
-                    <option value="">— Pilih karyawan —</option>
-                    {employees.map((emp) => (
-                      <option key={emp.id} value={emp.id} disabled={linkedEmployeeIds.has(emp.id)}>
-                        {emp.name}
-                        {emp.biometric_id ? ` (PIN ${emp.biometric_id})` : ''}
-                        {linkedEmployeeIds.has(emp.id) ? ' — sudah punya akun' : ''}
-                        {!emp.allow_manual_attendance ? ' — belum diizinkan absen foto' : ''}
-                      </option>
-                    ))}
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Karyawan juga harus diizinkan absen foto di halaman Employees, dan outletnya
-                    harus punya titik koordinat.
-                  </p>
-                </div>
-              )}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">
+                  {isEmployeeRole ? 'Karyawan' : 'Juga karyawan? (opsional)'}
+                </label>
+                <Select
+                  required={isEmployeeRole}
+                  value={formData.employee_id}
+                  onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })}
+                >
+                  <option value="">{isEmployeeRole ? '— Pilih karyawan —' : '— Bukan karyawan —'}</option>
+                  {employees.map((emp) => (
+                    <option key={emp.id} value={emp.id} disabled={linkedEmployeeIds.has(emp.id)}>
+                      {emp.name}
+                      {emp.biometric_id ? ` (PIN ${emp.biometric_id})` : ''}
+                      {linkedEmployeeIds.has(emp.id) ? ' — sudah punya akun' : ''}
+                      {!emp.allow_manual_attendance ? ' — belum diizinkan absen foto' : ''}
+                    </option>
+                  ))}
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {!isEmployeeRole && 'Tautkan bila user ini juga karyawan: ia tetap memakai role di atas, plus bisa absen QR / foto seperti role Karyawan. '}
+                  Absen foto juga butuh izin absen foto di halaman Employees dan titik koordinat outlet.
+                </p>
+              </div>
 
               {/* Wewenang data: Company > Brand > Outlet.
                   Mencentang company/brand otomatis mencakup semua di bawahnya —

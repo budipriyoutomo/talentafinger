@@ -67,7 +67,7 @@ return [
         'attendance.view' => 'Membuka menu Logs dan Absen per Mesin. Wajib untuk kirim maupun review absensi.',
         'attendance.send' => 'Tombol Kirim / Kirim Ulang absensi ke Talenta.',
         'attendance.review' => 'Tombol Setujui / Tolak pada absen foto & absen QR berstatus "menunggu review" di menu Logs. Hanya untuk outlet yang ditugaskan ke user.',
-        'attendance.qr.create' => 'Scan QR di layar outlet lalu kirim selfie + lokasi. Khusus akun karyawan.',
+        'attendance.qr.create' => 'Scan QR di layar outlet lalu kirim selfie + lokasi. Untuk akun yang ditautkan ke data karyawan.',
 
         'employee.view' => 'Membuka menu Employees (hanya melihat).',
         'employee.manage' => 'Menambah, mengubah, menghapus karyawan, termasuk izin absen foto per karyawan.',
@@ -110,8 +110,9 @@ return [
     | Permission khusus role sistem
     |---------------------------------------------------------------------------
     | Tak bisa dicentang pada role buatan sendiri. Absen foto & absen QR butuh
-    | akun yang ditautkan ke data karyawan, dan tautan itu hanya ada pada role
-    | `employee`.
+    | akun yang ditautkan ke data karyawan: role `employee` memegangnya, dan
+    | user role lain yang ditautkan ke karyawan ikut mendapatkannya otomatis
+    | (lihat User::permissions).
     */
     'system_only' => [
         'attendance.manual.create',

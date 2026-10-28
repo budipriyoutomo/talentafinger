@@ -7,7 +7,7 @@ import { Camera, Loader2, X } from 'lucide-react'
 const MAX_PHOTO_SIDE = 1280
 const PHOTO_QUALITY = 0.8
 
-const CAMERA_ERRORS = {
+export const CAMERA_ERRORS = {
   NotAllowedError: 'Izin kamera ditolak. Aktifkan izin kamera untuk situs ini di pengaturan browser.',
   NotFoundError: 'Kamera tidak ditemukan di perangkat ini.',
   NotReadableError: 'Kamera sedang dipakai aplikasi lain. Tutup aplikasi tersebut lalu coba lagi.',

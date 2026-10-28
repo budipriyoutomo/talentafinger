@@ -47,10 +47,20 @@ class User extends Authenticatable
         return $this->role === Role::ADMIN;
     }
 
-    /** Akun karyawan (absen foto), bukan pengguna admin panel. */
+    /** Akun KHUSUS karyawan (role employee): hanya absen, bukan pengguna admin panel. */
     public function isEmployee(): bool
     {
         return $this->role === Role::EMPLOYEE;
+    }
+
+    /**
+     * Akun ini ditautkan ke data karyawan, apa pun role-nya. User role lain
+     * (mis. manager) yang juga karyawan ikut memegang izin role Karyawan
+     * (absen foto / QR) — lihat permissions().
+     */
+    public function isLinkedEmployee(): bool
+    {
+        return $this->employee_id !== null;
     }
 
     /**
@@ -76,17 +86,36 @@ class User extends Authenticatable
         return $this->belongsTo(Role::class, 'role', 'key');
     }
 
-    /** @return string[] */
+    /**
+     * Permission role user + (bila ditautkan ke karyawan) permission role
+     * Karyawan. Jadi role Karyawan "digabung" dengan role utama lewat tautan
+     * karyawan, bukan lewat banyak role per user.
+     *
+     * @return string[]
+     */
     public function permissions(): array
     {
-        if ($this->resolvedPermissions === null || $this->resolvedPermissions[0] !== $this->role) {
-            $this->resolvedPermissions = [$this->role, Role::permissionsFor($this->role)];
+        $memoKey = $this->role . '|' . ($this->employee_id ?? '');
+
+        if ($this->resolvedPermissions === null || $this->resolvedPermissions[0] !== $memoKey) {
+            $permissions = Role::permissionsFor($this->role);
+
+            if ($this->isLinkedEmployee() && ! $this->isEmployee()) {
+                $permissions = array_values(array_unique(
+                    array_merge($permissions, Role::permissionsFor(Role::EMPLOYEE))
+                ));
+            }
+
+            $this->resolvedPermissions = [$memoKey, $permissions];
         }
 
         return $this->resolvedPermissions[1];
     }
 
-    /** Data karyawan yang ditautkan ke akun ber-role `employee`. */
+    /**
+     * Data karyawan yang ditautkan ke akun ini. Wajib untuk role `employee`,
+     * opsional untuk role lain (user yang juga karyawan & ikut absen).
+     */
     public function employee()
     {
         return $this->belongsTo(Employee::class);

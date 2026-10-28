@@ -14,6 +14,8 @@ import {
   KeyRound,
   QrCode,
   Database,
+  Camera,
+  ScanLine,
 } from 'lucide-react'
 
 /**
@@ -28,6 +30,9 @@ import {
  *   permission = izin untuk melihat menunya (array = cukup salah satu; tanpa
  *                permission = semua user panel). Halaman itu sendiri TETAP
  *                dijaga server — menyembunyikan menu bukan pengaman.
+ *   linkedEmployee = hanya untuk user yang ditautkan ke data karyawan (absen
+ *                sendiri). Admin memegang semua permission, jadi permission
+ *                saja tak cukup untuk menentukan ia bisa absen.
  *
  * Grup yang semua item-nya tersembunyi ikut disembunyikan.
  */
@@ -45,6 +50,14 @@ export const navGroups = [
     items: [
       { path: '/attendance-logs', label: 'Logs', title: 'Attendance Logs', icon: FileText, permission: 'attendance.view' },
       { path: '/employee-presence', label: 'Absen per Mesin', title: 'Karyawan Absen di Mesin Mana', icon: MapPin, permission: 'attendance.view' },
+    ],
+  },
+  {
+    key: 'self',
+    label: 'Absen Saya',
+    items: [
+      { path: '/absen/qr', label: 'Absen QR', icon: ScanLine, permission: 'attendance.qr.create', linkedEmployee: true },
+      { path: '/absen', label: 'Absen Foto', icon: Camera, permission: 'attendance.manual.create', linkedEmployee: true },
     ],
   },
   {
@@ -84,13 +97,15 @@ export const hrefOf = (item) => (item.tab ? `${item.path}?tab=${item.tab}` : ite
  * dilihat — sama dengan tab bawaan yang dibuka halaman Settings.
  */
 export function useNavigation() {
-  const { url } = usePage()
+  const { url, props } = usePage()
   const { can, canAny } = usePermissions()
+  const employeeLinked = !!props?.auth?.user?.employee_linked
 
   return useMemo(() => {
     const allowed = (item) =>
-      !item.permission ||
-      (Array.isArray(item.permission) ? canAny(...item.permission) : can(item.permission))
+      (!item.linkedEmployee || employeeLinked) &&
+      (!item.permission ||
+        (Array.isArray(item.permission) ? canAny(...item.permission) : can(item.permission)))
 
     const groups = navGroups
       .map((g) => ({ ...g, items: g.items.filter(allowed) }))
@@ -103,5 +118,5 @@ export function useNavigation() {
     const active = samePath.find((i) => i.tab && i.tab === tab) ?? samePath[0] ?? null
 
     return { groups, items, active }
-  }, [url, can, canAny])
+  }, [url, can, canAny, employeeLinked])
 }

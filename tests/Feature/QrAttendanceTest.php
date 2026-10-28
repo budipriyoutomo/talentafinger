@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AttendanceKiosk;
 use App\Models\AttendanceLog;
+use App\Models\AttendanceSource;
 use App\Models\Brand;
 use App\Models\Company;
 use App\Models\Employee;
@@ -325,6 +326,54 @@ class QrAttendanceTest extends TestCase
         $this->assertSame(0, AttendanceLog::count());
     }
 
+    // ===== User role lain yang juga karyawan =====
+
+    public function test_manager_yang_ditautkan_ke_karyawan_bisa_absen_qr(): void
+    {
+        // Akun khusus karyawan dilepas dulu (1 karyawan = 1 akun).
+        $this->employeeUser->update(['employee_id' => null]);
+        $manager = $this->managerOf($this->outlet);
+        $manager->update(['employee_id' => $this->employee->id]);
+
+        $this->assertTrue($manager->fresh()->hasPermission('attendance.qr.create'));
+        $this->assertTrue($manager->fresh()->hasPermission('attendance.review'));
+
+        $this->actingAs($manager)->get($this->qrUrl())->assertRedirect('/absen/qr');
+        $this->actingAs($manager)->post('/api/attendance/qr', [
+            'photo' => UploadedFile::fake()->image('selfie.jpg', 640, 480),
+            'latitude' => self::LAT + 0.00045,
+            'longitude' => self::LNG,
+            'accuracy' => 9,
+        ], ['Accept' => 'application/json'])->assertCreated();
+
+        $this->assertSame($this->employee->id, AttendanceLog::sole()->employee_id);
+        // Tetap pengguna panel: dashboard tidak dialihkan ke /absen.
+        $this->actingAs($manager)->get('/dashboard')->assertOk();
+    }
+
+    public function test_manager_tanpa_tautan_karyawan_tak_bisa_absen_qr(): void
+    {
+        $manager = $this->managerOf($this->outlet);
+
+        $this->assertFalse($manager->hasPermission('attendance.qr.create'));
+        $this->actingAs($manager)->get('/absen/qr')->assertForbidden();
+    }
+
+    public function test_user_role_lain_boleh_ditautkan_ke_karyawan_lewat_api(): void
+    {
+        $this->employeeUser->update(['employee_id' => null]);
+        $admin = $this->user('admin', 'admin@adms.local');
+
+        $this->actingAs($admin)->postJson('/api/users', [
+            'name' => 'Budi Manager',
+            'email' => 'budi@adms.local',
+            'password' => 'Rahasia#2026x',
+            'role' => 'manager',
+            'employee_id' => $this->employee->id,
+            'outlet_ids' => [$this->outlet->id],
+        ])->assertCreated()->assertJsonPath('employee_id', $this->employee->id);
+    }
+
     // ===== Review, foto & Talenta =====
 
     public function test_supervisor_outlet_bisa_review_dan_lihat_foto_outlet_lain_tidak(): void
@@ -341,12 +390,37 @@ class QrAttendanceTest extends TestCase
         $this->actingAs($manager)->get("/api/attendance-logs/{$log->id}/photo")->assertOk();
         $this->actingAs($manager)->postJson("/api/attendance-logs/{$log->id}/review", ['action' => 'approve'])->assertOk();
 
+        // Bawaan master sumber: QR tidak di-sync ke Talenta.
+        $this->assertSame('skipped', $log->fresh()->status_sync);
+    }
+
+    public function test_disetujui_masuk_antrean_bila_sumber_qr_di_sync(): void
+    {
+        AttendanceSource::where('code', AttendanceLog::SOURCE_QR)->first()->update(['sync_to_talenta' => true]);
+        $log = $this->qrLog();
+
+        $this->actingAs($this->managerOf($this->outlet))
+            ->postJson("/api/attendance-logs/{$log->id}/review", ['action' => 'approve'])->assertOk();
+
         $this->assertSame('pending', $log->fresh()->status_sync);
+    }
+
+    public function test_qr_pending_dilewati_bila_sumber_tidak_di_sync(): void
+    {
+        Http::fake();
+        $log = $this->qrLog('pending');
+
+        $result = app(AttendanceSyncService::class)->sendPending();
+
+        $this->assertSame(0, $result['sent']);
+        $this->assertSame('skipped', $log->fresh()->status_sync);
+        Http::assertNothingSent();
     }
 
     public function test_disetujui_terkirim_ke_talenta_dengan_talenta_employee_id(): void
     {
         Http::fake(['*' => Http::response(['code' => 200], 200)]);
+        AttendanceSource::where('code', AttendanceLog::SOURCE_QR)->first()->update(['sync_to_talenta' => true]);
         $log = $this->qrLog('pending');
 
         $result = app(AttendanceSyncService::class)->sendPending();

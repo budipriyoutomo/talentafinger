@@ -67,7 +67,7 @@ class UserController extends Controller
             'must_change_password' => true,
             'role' => $data['role'],
             'is_active' => $data['is_active'] ?? true,
-            'employee_id' => $data['role'] === Role::EMPLOYEE ? $data['employee_id'] : null,
+            'employee_id' => $data['employee_id'] ?? null,
         ]);
 
         $this->syncScopes($user, $data);
@@ -114,8 +114,9 @@ class UserController extends Controller
         if (array_key_exists('is_active', $data)) {
             $user->is_active = $data['is_active'];
         }
-        // Tautan karyawan hanya bermakna untuk role employee.
-        $user->employee_id = $data['role'] === Role::EMPLOYEE ? $data['employee_id'] : null;
+        // Tautan karyawan: wajib untuk role employee, opsional untuk role lain
+        // (user yang juga karyawan -> ikut dapat izin absen foto / QR).
+        $user->employee_id = $data['employee_id'] ?? null;
         // Reset password oleh admin: sesi lama user itu otomatis keluar
         // (AuthenticateSession) dan ia wajib mengganti password sementara ini.
         // Admin yang mengganti password-nya SENDIRI di sini tidak dipaksa.
@@ -207,7 +208,7 @@ class UserController extends Controller
             throw new AccessDeniedHttpException('Anda tidak boleh memberikan role ini.');
         }
 
-        if ($data['role'] === Role::EMPLOYEE && ! $delegation->canLinkEmployee($data['employee_id'] ?? null)) {
+        if (! $delegation->canLinkEmployee($data['employee_id'] ?? null)) {
             throw new AccessDeniedHttpException('Karyawan ini berada di luar wewenang Anda.');
         }
 
@@ -219,8 +220,8 @@ class UserController extends Controller
     }
 
     /**
-     * Akun ber-role `employee` wajib ditautkan ke tepat satu karyawan, dan satu
-     * karyawan hanya boleh punya satu akun.
+     * Akun ber-role `employee` wajib ditautkan ke tepat satu karyawan; role lain
+     * boleh (opsional). Satu karyawan hanya boleh punya satu akun.
      */
     private function employeeRules(?string $ignoreUserId = null): array
     {

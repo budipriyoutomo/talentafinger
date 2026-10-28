@@ -30,6 +30,8 @@ class HandleInertiaRequests extends Middleware
                         'name' => $user->name,
                         'email' => $user->email,
                         'role' => $user->role,
+                        // Ditautkan ke data karyawan (role apa pun): menu "Absen Saya".
+                        'employee_linked' => $user->isLinkedEmployee(),
                     ]
                     : null,
                 // Daftar permission yang dimiliki, mis. ['machine.view', ...].

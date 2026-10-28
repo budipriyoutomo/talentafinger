@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Head, Link, router } from '@inertiajs/react'
+import { Head, Link, router, usePage } from '@inertiajs/react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -8,7 +8,7 @@ import ThemeToggle from '@/components/ThemeToggle'
 import { STATUS_LABEL, STATUS_VARIANT } from '@/components/ManualReviewDialog'
 import LiveCamera, { cameraSupported } from '@/components/LiveCamera'
 import { useFreshLocation } from '@/lib/geolocation'
-import { Camera, CheckCircle2, KeyRound, Loader2, LogOut, MapPin, RefreshCw, Send, ShieldAlert } from 'lucide-react'
+import { Camera, CheckCircle2, KeyRound, LayoutDashboard, Loader2, LogOut, MapPin, RefreshCw, Send, ShieldAlert } from 'lucide-react'
 
 function csrf() {
   return document.querySelector('meta[name="csrf-token"]').content
@@ -95,6 +95,8 @@ export default function ManualCheckIn({ employee, blocked_reason, radius_meters,
   }
 
   const logout = () => router.post('/logout')
+  // User role lain yang juga karyawan (mis. manager) bisa kembali ke admin panel.
+  const canOpenPanel = usePage().props.auth?.user?.role !== 'employee'
 
   return (
     <div className="min-h-screen bg-background">
@@ -107,6 +109,13 @@ export default function ManualCheckIn({ employee, blocked_reason, radius_meters,
             <p className="truncate font-semibold text-foreground">{employee?.name || 'Karyawan'}</p>
           </div>
           <div className="flex items-center gap-1">
+            {canOpenPanel && (
+              <Button asChild variant="ghost" size="sm" title="Kembali ke dashboard">
+                <Link href="/dashboard" aria-label="Dashboard">
+                  <LayoutDashboard className="h-4 w-4" />
+                </Link>
+              </Button>
+            )}
             <ThemeToggle className="text-muted-foreground" />
             <Button asChild variant="ghost" size="sm" title="Ganti password">
               <Link href="/password" aria-label="Ganti password">

@@ -150,3 +150,46 @@
         transform: translateY(0);
     }
 }
+
+/* Toast (sonner) di TENGAH layar dan lebih besar — posisi diatur di
+   components/ui/sonner.jsx. Sengaja di luar @layer dan selektor digandakan:
+   CSS bawaan sonner tidak ber-layer, jadi utilitas Tailwind kalah olehnya. */
+[data-sonner-toaster][data-sonner-toaster] [data-sonner-toast][data-styled='true'] {
+    padding: 20px 22px;
+    font-size: 15px;
+    gap: 12px;
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+
+[data-sonner-toaster][data-sonner-toaster] [data-sonner-toast][data-styled='true'] [data-title] {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+[data-sonner-toaster][data-sonner-toaster] [data-sonner-toast][data-styled='true'] [data-description] {
+    font-size: 14px;
+}
+
+[data-sonner-toaster][data-sonner-toaster] [data-sonner-toast][data-styled='true'] [data-icon] {
+    height: 22px;
+    width: 22px;
+}
+
+[data-sonner-toaster][data-sonner-toaster] [data-sonner-toast][data-styled='true'] [data-icon] svg {
+    height: 22px;
+    width: 22px;
+}
+
+[data-sonner-toaster][data-sonner-toaster] [data-sonner-toast][data-styled='true'] [data-button],
+[data-sonner-toaster][data-sonner-toaster] [data-sonner-toast][data-styled='true'] [data-cancel] {
+    height: 34px;
+    padding: 0 14px;
+    font-size: 14px;
+    border-radius: 6px;
+}
+
+[data-sonner-toaster][data-sonner-toaster] [data-sonner-toast][data-styled='true'] [data-close-button] {
+    height: 26px;
+    width: 26px;
+}

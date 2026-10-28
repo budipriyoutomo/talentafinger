@@ -90,6 +90,11 @@ class AccessDelegation
             return $this->canLinkEmployee($target->employee_id);
         }
 
+        // User role lain yang juga karyawan: karyawannya pun harus dalam jangkauan.
+        if ($target->isLinkedEmployee() && ! $this->canLinkEmployee($target->employee_id)) {
+            return false;
+        }
+
         $allowed = $this->actor->scopedOutletIds();
 
         return $allowed === null
