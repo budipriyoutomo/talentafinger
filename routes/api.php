@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AttendanceController;
+use App\Http\Controllers\AttendanceSourceController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\FingerprintController;
@@ -114,6 +115,8 @@ Route::post('/attendance-logs/{id}/review', [ManualAttendanceController::class, 
 
 // ===== Pengaturan aplikasi =====
 Route::put('/settings', [SettingController::class, 'update']);
+// Master sumber absensi: sumber mana yang di-sync ke Talenta.
+Route::put('/attendance-sources/{id}', [AttendanceSourceController::class, 'update'])->whereNumber('id');
 
 // ===== Manajemen user, role & scope =====
 // Pintu: permission user.manage / role.manage. Di dalam, pagar anti-eskalasi

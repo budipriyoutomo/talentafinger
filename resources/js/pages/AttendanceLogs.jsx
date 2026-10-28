@@ -30,7 +30,7 @@ const TABS = [
 ]
 
 // Status yang TIDAK boleh dikirim ke Talenta (cocok AttendanceLog::UNSENDABLE_STATUSES).
-const UNSENDABLE = ['pending_review', 'rejected', 'duplicate']
+const UNSENDABLE = ['pending_review', 'rejected', 'duplicate', 'skipped']
 
 // Filter sumber log (cocok AttendanceLog::SOURCES).
 const SOURCE_OPTIONS = [

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\AttendanceLog;
+use App\Models\AttendanceSource;
 use App\Models\Employee;
 use App\Models\User;
 use Illuminate\Support\Collection;
@@ -193,10 +194,28 @@ class AttendanceSyncService
             fn (AttendanceLog $log) => in_array($log->status_sync, AttendanceLog::UNSENDABLE_STATUSES, true)
         )->values();
 
+        // Sumber yang sync-nya dimatikan di master sumber (mis. QR): log
+        // pending/gagal-nya ditandai 'skipped' supaya tak menumpuk di antrean.
+        // Log yang sudah 'sent' tak diubah — riwayatnya tetap apa adanya.
+        [$logs, $notSynced] = $logs->partition(
+            fn (AttendanceLog $log) => AttendanceSource::syncsToTalenta($log->source)
+        );
+        $logs = $logs->values();
+
+        $toSkip = $notSynced->filter(fn (AttendanceLog $log) => in_array($log->status_sync, ['pending', 'failed'], true));
+        if ($toSkip->isNotEmpty()) {
+            AttendanceLog::whereIn('id', $toSkip->pluck('id'))->update([
+                'status_sync' => 'skipped',
+                'error_message' => 'Sumber absensi ini tidak di-sync ke Talenta (Master Sumber Absensi).',
+            ]);
+        }
+
         if ($logs->isEmpty()) {
             return [
                 'success' => false,
-                'message' => 'Tidak ada log yang boleh dikirim (absen foto belum disetujui / ditolak).',
+                'message' => $notSynced->isNotEmpty()
+                    ? 'Sumber absensi log ini tidak di-sync ke Talenta (atur di Master Sumber Absensi).'
+                    : 'Tidak ada log yang boleh dikirim (absen foto belum disetujui / ditolak).',
                 'sent' => 0,
                 'failed' => 0,
             ];

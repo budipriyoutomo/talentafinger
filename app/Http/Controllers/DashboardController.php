@@ -367,6 +367,7 @@ class DashboardController extends Controller
 
         return Inertia::render('Settings', [
             'groups' => $canSettings ? $this->settingGroups() : [],
+            'attendanceSources' => $canSettings ? AttendanceSourceController::list() : [],
             ...($canUsers ? $this->userManagementProps($user) : []),
             // Daftar role dibutuhkan tab User (pilihan role) maupun tab Role.
             'roles' => $canUsers || $canRoles ? RoleController::listFor($user) : [],

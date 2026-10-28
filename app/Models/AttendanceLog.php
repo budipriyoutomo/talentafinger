@@ -137,13 +137,14 @@ class AttendanceLog extends Model
      * Nilai status_sync yang boleh dipakai sebagai filter. Dipakai bersama oleh
      * halaman (tab "Gagal") dan aksi kirim ulang supaya tak ada dua daftar.
      */
-    public const STATUSES = ['pending_review', 'pending', 'sent', 'failed', 'rejected', 'duplicate'];
+    public const STATUSES = ['pending_review', 'pending', 'sent', 'failed', 'rejected', 'duplicate', 'skipped'];
 
     /**
      * Status yang TIDAK boleh dikirim ke Talenta lewat jalur mana pun:
-     * absen manual yang belum disetujui supervisor, atau yang ditolak.
+     * absen manual yang belum disetujui supervisor, yang ditolak, atau yang
+     * sumbernya dimatikan sync-nya di master sumber (AttendanceSource).
      */
-    public const UNSENDABLE_STATUSES = ['pending_review', 'rejected'];
+    public const UNSENDABLE_STATUSES = ['pending_review', 'rejected', 'skipped'];
 
     /**
      * Status yang boleh dikirim ULANG ke Talenta lewat aksi kirim ulang.

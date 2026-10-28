@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Models\AttendanceLog;
+use App\Models\AttendanceSource;
 use App\Models\Machine;
 use App\Models\DeviceCommand;
 use App\Models\BiometricTemplate;
@@ -139,14 +141,15 @@ class AdmsController extends Controller
                 continue;
             }
 
-            // Simpan sebagai 'pending'. Pengiriman ke Talenta dilakukan oleh
+            // Simpan sebagai 'pending' (atau 'skipped' bila sumber mesin dimatikan
+            // sync-nya di master sumber). Pengiriman ke Talenta dilakukan oleh
             // auto-send terjadwal atau tombol kirim manual di aplikasi.
             try {
                 $this->idempotencyService->createLog([
                     'machine_id' => $machine->id,
                     'biometric_id_lokal' => $rec['biometric_id'],
                     'timestamp' => $rec['timestamp'],
-                    'status_sync' => 'pending',
+                    'status_sync' => AttendanceSource::readyStatus(AttendanceLog::SOURCE_MACHINE),
                     'payload_raw' => $rec['raw'],
                 ]);
             } catch (UniqueConstraintViolationException) {

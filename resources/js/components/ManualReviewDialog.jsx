@@ -16,6 +16,7 @@ export const STATUS_LABEL = {
   failed: 'Gagal',
   rejected: 'Ditolak',
   duplicate: 'Duplikat',
+  skipped: 'Tidak di-sync',
 }
 
 export const STATUS_VARIANT = {
@@ -25,6 +26,7 @@ export const STATUS_VARIANT = {
   failed: 'destructive',
   rejected: 'destructive',
   duplicate: 'secondary',
+  skipped: 'secondary',
 }
 
 // Absen yang dikirim karyawan sendiri (cocok AttendanceLog::EMPLOYEE_SOURCES).

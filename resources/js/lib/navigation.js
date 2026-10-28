@@ -13,6 +13,7 @@ import {
   Users,
   KeyRound,
   QrCode,
+  Database,
 } from 'lucide-react'
 
 /**
@@ -69,6 +70,7 @@ export const navGroups = [
       { path: '/settings', tab: 'users', label: 'User', title: 'Manajemen User', icon: Users, permission: 'user.manage' },
       { path: '/settings', tab: 'roles', label: 'Role & Permission', icon: KeyRound, permission: 'role.manage' },
       { path: '/settings', tab: 'app', label: 'Pengaturan Aplikasi', icon: SlidersHorizontal, permission: 'setting.manage' },
+      { path: '/settings', tab: 'sources', label: 'Sumber Absensi', title: 'Master Sumber Absensi', icon: Database, permission: 'setting.manage' },
       { path: '/audit-logs', label: 'Audit Log', icon: History, permission: 'audit.view' },
     ],
   },

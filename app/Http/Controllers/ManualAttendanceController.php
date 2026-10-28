@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
 use App\Models\AttendanceLog;
+use App\Models\AttendanceSource;
 use App\Models\Employee;
 use App\Models\Outlet;
 use App\Models\Setting;
@@ -165,11 +166,14 @@ class ManualAttendanceController extends Controller
 
         // Update bersyarat (atomik): bila dua supervisor me-review bersamaan, hanya
         // yang pertama menang — yang kedua tak menimpa keputusan yang sudah ada.
+        $approvedStatus = AttendanceSource::readyStatus($log->source);
+
         $updated = AttendanceLog::whereKey($log->id)
             ->where('status_sync', 'pending_review')
             ->update([
-                // Disetujui -> 'pending': ikut auto-send / "Kirim Semua Pending" seperti log mesin.
-                'status_sync' => $data['action'] === 'approve' ? 'pending' : 'rejected',
+                // Disetujui -> 'pending': ikut auto-send / "Kirim Semua Pending" seperti
+                // log mesin. Bila sumbernya tak di-sync (master sumber) -> 'skipped'.
+                'status_sync' => $data['action'] === 'approve' ? $approvedStatus : 'rejected',
                 'reviewed_by' => $request->user()->id,
                 'reviewed_at' => now(),
                 'review_note' => $data['note'] ?? null,
@@ -186,9 +190,11 @@ class ManualAttendanceController extends Controller
         );
 
         return response()->json([
-            'message' => $data['action'] === 'approve'
-                ? 'Absen disetujui dan masuk antrean kirim ke Talenta.'
-                : 'Absen ditolak.',
+            'message' => match (true) {
+                $data['action'] !== 'approve' => 'Absen ditolak.',
+                $approvedStatus === 'pending' => 'Absen disetujui dan masuk antrean kirim ke Talenta.',
+                default => 'Absen disetujui (sumber ini tidak dikirim ke Talenta).',
+            },
             'log' => $log->fresh(),
         ]);
     }
