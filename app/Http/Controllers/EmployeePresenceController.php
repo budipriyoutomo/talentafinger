@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AttendanceKiosk;
 use App\Models\AttendanceLog;
 use App\Models\Brand;
 use App\Models\Employee;
@@ -12,12 +13,13 @@ use Illuminate\Support\Str;
 use Inertia\Inertia;
 
 /**
- * Halaman "Absen per Mesin": karyawan absen di mesin mana saja, lengkap dengan
- * identitas mesinnya. Murni laporan baca-saja di atas attendance_logs.
+ * Halaman "Absen per Mesin": karyawan absen di mana saja, lengkap dengan
+ * identitas tempatnya. Murni laporan baca-saja di atas attendance_logs.
  *
- * Hanya log MESIN yang dihitung (absen foto tak punya mesin). Log mesin tak
- * menyimpan employee_id, jadi karyawan di-resolve lewat PIN
- * (biometric_id_lokal = employees.biometric_id) — sama seperti halaman Log.
+ * Bisa difilter per SUMBER (mesin / foto / QR; kosong = semua). Log mesin tak
+ * menyimpan employee_id, jadi karyawannya di-resolve lewat PIN
+ * (biometric_id_lokal = employees.biometric_id) — sama seperti halaman Log;
+ * log foto/QR langsung lewat employee_id, tempatnya = outlet (+ kiosk QR).
  */
 class EmployeePresenceController extends Controller
 {
@@ -37,66 +39,96 @@ class EmployeePresenceController extends Controller
         $user = $request->user();
 
         $filters = [
+            // `source` ikut dari sini (di-whitelist; kosong = semua sumber).
             ...AttendanceLog::filtersFromRequest($request),
-            // Halaman ini tak punya tab status/sumber: selalu log mesin, semua status
-            // kecuali EXCLUDED_STATUSES.
+            // Halaman ini tak punya tab status: semua status kecuali EXCLUDED_STATUSES.
             'status' => null,
-            'source' => AttendanceLog::SOURCE_MACHINE,
             'employee_id' => Str::isUuid($request->input('employee_id')) ? $request->input('employee_id') : null,
         ];
         $filters['date_from'] ??= today()->subDays(self::DEFAULT_DAYS - 1)->toDateString();
         $filters['date_to'] ??= today()->toDateString();
 
-        // Filter karyawan di-resolve ke PIN-nya (log mesin tak menyimpan
-        // employee_id). Karyawan di luar wewenang / tanpa PIN = hasil kosong.
-        $pinFilter = null;
-        if ($filters['employee_id']) {
-            $pinFilter = (string) (Employee::visibleTo($user)->whereKey($filters['employee_id'])->value('biometric_id') ?? '');
-        }
+        // Filter karyawan: log mesin dicocokkan lewat PIN-nya, log foto/QR lewat
+        // employee_id. Karyawan di luar wewenang = hasil kosong.
+        $picked = $filters['employee_id']
+            ? Employee::visibleTo($user)->whereKey($filters['employee_id'])->first(['id', 'biometric_id'])
+            : null;
 
-        // Satu baris per (PIN, mesin, tanggal): absen pertama hari itu = masuk,
-        // terakhir = keluar. Scope akses lewat visibleTo(), filter panel lewat
+        // Satu baris per (karyawan, tempat, tanggal): absen pertama hari itu =
+        // masuk, terakhir = keluar. Tempat = mesin (log mesin) atau outlet + kiosk
+        // (log foto/QR). Scope akses lewat visibleTo(), filter panel lewat
         // applyFilters() yang sama dengan halaman Log.
         $query = AttendanceLog::visibleTo($user)
             ->applyFilters($filters)
-            ->whereNotNull('machine_id')
             ->whereNotIn('status_sync', self::EXCLUDED_STATUSES)
-            ->when($pinFilter !== null, fn ($q) => $q->where('biometric_id_lokal', $pinFilter));
+            ->when($filters['employee_id'] && ! $picked, fn ($q) => $q->whereRaw('1 = 0'))
+            ->when($picked, fn ($q) => $q->where(fn ($qq) => $qq
+                ->where('employee_id', $picked->id)
+                ->when($picked->biometric_id, fn ($m) => $m->orWhere(fn ($mm) => $mm
+                    ->whereNull('employee_id')
+                    ->where('biometric_id_lokal', $picked->biometric_id)))));
         $day = 'DATE(' . $query->getQuery()->getGrammar()->wrap('timestamp') . ')';
 
+        $keys = ['source', 'employee_id', 'biometric_id_lokal', 'machine_id', 'outlet_id', 'kiosk_id'];
         $groups = $query
-            ->groupBy('biometric_id_lokal', 'machine_id')
+            ->groupBy($keys)
             ->groupByRaw($day)
-            ->selectRaw("biometric_id_lokal, machine_id, {$day} AS log_date, COUNT(*) AS total, MIN(timestamp) AS first_at, MAX(timestamp) AS last_at")
+            ->selectRaw(implode(', ', $keys) . ", {$day} AS log_date, COUNT(*) AS total, MIN(timestamp) AS first_at, MAX(timestamp) AS last_at")
             ->toBase()
             ->get();
 
+        [$employeeGroups, $machineGroups] = $groups->partition(fn ($g) => $g->employee_id !== null);
+
         $employeeByPin = Employee::visibleTo($user)
-            ->whereIn('biometric_id', $groups->pluck('biometric_id_lokal')->unique()->filter()->values())
+            ->whereIn('biometric_id', $machineGroups->pluck('biometric_id_lokal')->unique()->filter()->values())
             ->get()
             ->keyBy(fn ($e) => (string) $e->biometric_id);
+
+        // Karyawan log foto/QR tak perlu visibleTo(): lognya sudah lolos scope
+        // lewat outlet tempat absen (sama seperti halaman Log menampilkannya).
+        $employeeById = Employee::whereIn('id', $employeeGroups->pluck('employee_id')->unique()->values())
+            ->get()
+            ->keyBy('id');
+
+        $outletPlaces = Outlet::with('brand.company')
+            ->whereIn('id', $employeeGroups->pluck('outlet_id')->filter()->unique()->values())
+            ->get()
+            ->keyBy('id');
+        $kioskNames = AttendanceKiosk::whereIn('id', $employeeGroups->pluck('kiosk_id')->filter()->unique()->values())
+            ->pluck('name', 'id');
 
         // Identitas lengkap hanya untuk mesin yang muncul di hasil. Tanpa
         // visibleTo() lagi: mesinnya sudah lolos scope lewat log di atas.
         $machines = Machine::with('outlet.brand.company')
-            ->whereIn('id', $groups->pluck('machine_id')->unique()->values())
+            ->whereIn('id', $machineGroups->pluck('machine_id')->filter()->unique()->values())
             ->get()
             ->mapWithKeys(fn (Machine $m) => [$m->id => $this->machineIdentity($m)]);
 
         $rows = $groups
-            ->map(function ($p) use ($employeeByPin) {
+            ->map(function ($p) use ($employeeByPin, $employeeById, $outletPlaces, $kioskNames) {
                 $pin = (string) $p->biometric_id_lokal;
-                $employee = $employeeByPin->get($pin);
+                $employee = $p->employee_id !== null
+                    ? $employeeById->get($p->employee_id)
+                    : $employeeByPin->get($pin);
                 $date = substr((string) $p->log_date, 0, 10);
+                $outlet = $p->outlet_id ? $outletPlaces->get($p->outlet_id) : null;
 
                 return [
-                    'key' => "{$pin}|{$p->machine_id}|{$date}",
+                    'key' => implode('|', [$p->source, $p->employee_id ?? $pin, $p->machine_id ?? $p->outlet_id, $p->kiosk_id, $date]),
                     'date' => $date,
+                    'source' => $p->source,
                     'pin' => $pin,
                     'employee_id' => $employee?->id,
                     'name' => $employee?->name,
                     'employee_code' => $employee?->employee_code,
                     'machine_id' => $p->machine_id,
+                    // Tempat absen foto/QR (log mesin memakai machineIdentities).
+                    'place' => $p->machine_id ? null : [
+                        'outlet_name' => $outlet?->name,
+                        'brand_name' => $outlet?->brand?->name,
+                        'company_name' => $outlet?->brand?->company?->name,
+                        'kiosk_name' => $p->kiosk_id ? $kioskNames->get($p->kiosk_id) : null,
+                    ],
                     'total' => (int) $p->total,
                     'check_in' => $this->wallClock($p->first_at),
                     'check_out' => $this->wallClock($p->last_at),
@@ -115,9 +147,8 @@ class EmployeePresenceController extends Controller
             'machines' => fn () => Machine::visibleTo($user)->orderBy('name')->get(['id', 'name', 'serial_number']),
             'brands' => fn () => Brand::visibleTo($user)->orderBy('name')->get(['id', 'name', 'company_id']),
             'outlets' => fn () => Outlet::visibleTo($user)->orderBy('name')->get(['id', 'name', 'brand_id']),
-            // Pilihan dropdown karyawan: hanya yang punya PIN (log mesin dicocokkan lewat PIN).
+            // Semua karyawan: log mesin dicocokkan lewat PIN, log foto/QR lewat employee_id.
             'employees' => fn () => Employee::visibleTo($user)
-                ->whereNotNull('biometric_id')
                 ->orderBy('name')
                 ->get(['id', 'name', 'employee_code', 'biometric_id']),
         ]);

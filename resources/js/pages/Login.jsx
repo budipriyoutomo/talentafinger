@@ -1,5 +1,5 @@
 import React from 'react'
-import { Head, useForm, usePage } from '@inertiajs/react'
+import { Head, Link, useForm, usePage } from '@inertiajs/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import ThemeToggle from '@/components/ThemeToggle'
@@ -11,8 +11,9 @@ const FEATURES = [
   { icon: ShieldCheck, text: 'Akses berbasis role untuk admin, HR, dan karyawan' },
 ]
 
-export default function Login() {
-  // Mis. "Akun Anda dinonaktifkan" setelah sesi diputus EnsureAccountActive.
+export default function Login({ registrationEnabled = false }) {
+  // Mis. "Akun Anda dinonaktifkan" setelah sesi diputus EnsureAccountActive,
+  // atau hasil klik link verifikasi pendaftaran.
   const { flash } = usePage().props
   const { data, setData, post, processing, errors } = useForm({
     email: '',
@@ -89,6 +90,11 @@ export default function Login() {
               {flash.error}
             </div>
           )}
+          {flash?.success && (
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-400">
+              {flash.success}
+            </div>
+          )}
 
           <form onSubmit={submit} className="space-y-5">
             <div className="space-y-1.5">
@@ -140,6 +146,15 @@ export default function Login() {
               Masuk
             </Button>
           </form>
+
+          {registrationEnabled && (
+            <p className="text-center text-sm text-muted-foreground">
+              Karyawan belum punya akun?{' '}
+              <Link href="/register" className="font-medium text-primary hover:underline">
+                Daftar di sini
+              </Link>
+            </p>
+          )}
         </div>
       </div>
     </div>

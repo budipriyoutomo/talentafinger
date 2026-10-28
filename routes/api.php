@@ -10,6 +10,7 @@ use App\Http\Controllers\MachineController;
 use App\Http\Controllers\ManualAttendanceController;
 use App\Http\Controllers\OrgController;
 use App\Http\Controllers\QrAttendanceController;
+use App\Http\Controllers\RegistrationReviewController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SettingController;
 use App\Http\Controllers\TalentaEmployeeSyncController;
@@ -124,8 +125,16 @@ Route::put('/attendance-sources/{id}', [AttendanceSourceController::class, 'upda
 Route::middleware('can:user.manage')->group(function () {
     Route::get('/users', [UserController::class, 'index']);
     Route::post('/users', [UserController::class, 'store']);
+    // Buat akun role Karyawan dari data karyawan (halaman Employees).
+    Route::post('/users/from-employees', [UserController::class, 'createFromEmployees']);
     Route::put('/users/{id}', [UserController::class, 'update']);
     Route::delete('/users/{id}', [UserController::class, 'destroy']);
+});
+
+// Persetujuan pendaftaran akun karyawan; scope outlet dicek di controller.
+Route::middleware('can:user.registration.review')->group(function () {
+    Route::post('/registrations/{id}/approve', [RegistrationReviewController::class, 'approve']);
+    Route::post('/registrations/{id}/reject', [RegistrationReviewController::class, 'reject']);
 });
 
 Route::middleware('can:role.manage')->group(function () {

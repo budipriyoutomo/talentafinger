@@ -7,15 +7,28 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Prunable;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
-#[Fillable(['name', 'email', 'password', 'must_change_password', 'role', 'is_active', 'last_login_at', 'last_login_ip', 'employee_id'])]
+#[Fillable(['name', 'email', 'password', 'must_change_password', 'role', 'is_active', 'last_login_at', 'last_login_ip', 'employee_id', 'registration_status', 'registered_at'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable;
+    use HasFactory, Notifiable, Prunable;
+
+    /** Status registrasi mandiri karyawan (null = akun biasa / sudah selesai). */
+    public const REG_UNVERIFIED = 'unverified';
+
+    public const REG_PENDING = 'pending';
+
+    public const REG_REJECTED = 'rejected';
+
+    /** Pendaftaran yang tak pernah diverifikasi / ditolak dibuang setelah ini. */
+    public const UNVERIFIED_RETENTION_DAYS = 7;
+
+    public const REJECTED_RETENTION_DAYS = 30;
 
     /**
      * Samakan dengan default kolom `role` di DB. Tanpa ini, user yang dibuat
@@ -230,6 +243,32 @@ class User extends Authenticatable
         return $outletId !== null && in_array($outletId, $allowed, true);
     }
 
+    /** Penyetuju / penolak pendaftaran akun ini. */
+    public function reviewer()
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
+    /** Akun hasil registrasi mandiri yang belum selesai (belum verifikasi / belum disetujui / ditolak). */
+    public function isRegistrationIncomplete(): bool
+    {
+        return $this->registration_status !== null;
+    }
+
+    /**
+     * Dibuang `model:prune` harian: pendaftaran yang tak pernah diverifikasi
+     * dan yang ditolak, supaya NIK-nya bisa didaftarkan ulang dan daftar user
+     * tak penuh sampah. Akun biasa (status null) tak pernah tersentuh.
+     */
+    public function prunable()
+    {
+        return static::where(fn ($q) => $q
+            ->where(fn ($w) => $w->where('registration_status', self::REG_UNVERIFIED)
+                ->where('registered_at', '<', now()->subDays(self::UNVERIFIED_RETENTION_DAYS)))
+            ->orWhere(fn ($w) => $w->where('registration_status', self::REG_REJECTED)
+                ->where('reviewed_at', '<', now()->subDays(self::REJECTED_RETENTION_DAYS))));
+    }
+
     /**
      * Get the attributes that should be cast.
      *
@@ -243,6 +282,8 @@ class User extends Authenticatable
             'must_change_password' => 'boolean',
             'is_active' => 'boolean',
             'last_login_at' => 'datetime',
+            'registered_at' => 'datetime',
+            'reviewed_at' => 'datetime',
         ];
     }
 }

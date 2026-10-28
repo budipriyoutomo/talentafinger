@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import {
   AlertTriangle,
   CalendarDays,
+  Camera,
   ChevronRight,
   Clock,
   Download,
@@ -21,6 +22,7 @@ import {
   LogOut,
   MapPin,
   Network,
+  QrCode,
   RotateCcw,
   SlidersHorizontal,
   X,
@@ -30,6 +32,25 @@ import {
 const placement = (m) => [m?.outlet_name, m?.brand_name, m?.company_name].filter(Boolean).join(' · ')
 
 const machineLabel = (m) => m?.name || m?.serial_number || 'Mesin tak dikenal'
+
+// Pilihan filter sumber (cocok AttendanceLog::SOURCES; '' = semua).
+const SOURCE_OPTIONS = [
+  { value: '', label: 'Semua sumber' },
+  { value: 'machine', label: 'Mesin' },
+  { value: 'manual_photo', label: 'Foto Manual' },
+  { value: 'qr', label: 'QR Outlet' },
+]
+const SOURCE_META = {
+  machine: { label: 'Mesin', icon: Fingerprint },
+  manual_photo: { label: 'Foto', icon: Camera },
+  qr: { label: 'QR', icon: QrCode },
+}
+
+// Teks tempat absen untuk pencarian & CSV: mesin, atau outlet (+ kiosk) untuk foto/QR.
+const placeLabel = (r, machineIdentities) =>
+  r.machine_id
+    ? machineLabel(machineIdentities[r.machine_id])
+    : [r.place?.outlet_name || 'Outlet tak dikenal', r.place?.kiosk_name].filter(Boolean).join(' · ')
 
 // "2026-10-14 08:00:00" -> "08:00" (tanggal sudah di kolom sendiri).
 const timeOf = (dt) => (dt ? dt.slice(11, 16) : '-')
@@ -209,7 +230,7 @@ export default function EmployeePresence({
       employees.map((e) => ({
         value: e.id,
         label: e.name,
-        description: [e.employee_code, `PIN ${e.biometric_id}`].filter(Boolean).join(' · '),
+        description: [e.employee_code, e.biometric_id && `PIN ${e.biometric_id}`].filter(Boolean).join(' · '),
       })),
     [employees]
   )
@@ -223,6 +244,7 @@ export default function EmployeePresence({
       brand_id: filters.brand_id || '',
       outlet_id: filters.outlet_id || '',
       employee_id: filters.employee_id || '',
+      source: filters.source || '',
       date_from: filters.date_from || '',
       date_to: filters.date_to || '',
       ...next,
@@ -240,7 +262,7 @@ export default function EmployeePresence({
   const resetFilters = () =>
     router.get('/employee-presence', {}, { preserveScroll: true, only: ['rows', 'machineIdentities', 'filters'] })
 
-  const activeFilterCount = ['employee_id', 'brand_id', 'outlet_id', 'machine_id'].filter((k) => filters[k]).length
+  const activeFilterCount = ['employee_id', 'source', 'brand_id', 'outlet_id', 'machine_id'].filter((k) => filters[k]).length
 
   const columns = useMemo(
     () => [
@@ -291,7 +313,7 @@ export default function EmployeePresence({
                   </div>
                 )}
                 <div className="text-muted-foreground truncate text-xs">
-                  {[r.employee_code, `PIN ${r.pin}`].filter(Boolean).join(' · ')}
+                  {[r.employee_code, r.pin && `PIN ${r.pin}`].filter(Boolean).join(' · ')}
                 </div>
               </div>
             </div>
@@ -300,13 +322,35 @@ export default function EmployeePresence({
       },
       {
         id: 'machine',
-        header: 'Mesin',
+        header: 'Sumber / Tempat',
         accessorFn: (r) => {
           const m = machineIdentities[r.machine_id]
-          return [machineLabel(m), m?.serial_number, m?.outlet_name].filter(Boolean).join(' ')
+          return [SOURCE_META[r.source]?.label, placeLabel(r, machineIdentities), m?.serial_number, m?.outlet_name, r.place?.brand_name]
+            .filter(Boolean)
+            .join(' ')
         },
         cell: ({ row }) => {
-          const m = machineIdentities[row.original.machine_id]
+          const r = row.original
+          if (!r.machine_id) {
+            const meta = SOURCE_META[r.source] || SOURCE_META.manual_photo
+            const Icon = meta.icon
+            return (
+              <div className="flex min-w-0 items-start gap-2 text-sm">
+                <Icon className="mt-0.5 h-4 w-4 shrink-0 text-indigo-500" />
+                <div className="min-w-0">
+                  <div className="truncate font-medium">
+                    Absen {meta.label}
+                    {r.place?.kiosk_name && <span className="text-muted-foreground font-normal"> · {r.place.kiosk_name}</span>}
+                  </div>
+                  <div className="text-muted-foreground flex items-center gap-1 truncate text-xs">
+                    <MapPin className="h-3 w-3 shrink-0" />
+                    {placement(r.place) || 'Outlet tak dikenal'}
+                  </div>
+                </div>
+              </div>
+            )
+          }
+          const m = machineIdentities[r.machine_id]
           return (
             <div className="flex min-w-0 items-start gap-2 text-sm" title={m?.serial_number}>
               <span
@@ -377,11 +421,13 @@ export default function EmployeePresence({
 
   // Satu baris CSV per karyawan x mesin x hari, lengkap dengan identitas mesin.
   const handleExport = () => {
-    const header = ['Tanggal', 'Karyawan', 'Kode', 'PIN', 'Mesin', 'Serial Number', 'Outlet', 'Brand', 'Company', 'Absen Masuk', 'Absen Keluar', 'Durasi', 'Jumlah Tap']
+    const header = ['Tanggal', 'Karyawan', 'Kode', 'PIN', 'Sumber', 'Mesin / Kiosk', 'Serial Number', 'Outlet', 'Brand', 'Company', 'Absen Masuk', 'Absen Keluar', 'Durasi', 'Jumlah Tap']
     const lines = rows.map((r) => {
-      const m = machineIdentities[r.machine_id] || {}
+      // Log foto/QR: tempatnya outlet (+ kiosk), bukan mesin.
+      const m = r.machine_id ? machineIdentities[r.machine_id] || {} : r.place || {}
       return [
-        r.date, r.name || 'PIN tak dikenal', r.employee_code, r.pin, machineLabel(m), m.serial_number,
+        r.date, r.name || 'PIN tak dikenal', r.employee_code, r.pin, SOURCE_META[r.source]?.label || r.source,
+        r.machine_id ? machineLabel(m) : m.kiosk_name, m.serial_number,
         m.outlet_name, m.brand_name, m.company_name,
         r.check_in?.slice(11), r.total > 1 ? r.check_out?.slice(11) : '', durationOf(r) || '', r.total,
       ]
@@ -440,7 +486,7 @@ export default function EmployeePresence({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
               <Field label="Dari tanggal">
                 <Input type="date" value={filters.date_from || ''} max={filters.date_to || undefined} onChange={(e) => applyFilters({ date_from: e.target.value })} />
               </Field>
@@ -456,6 +502,11 @@ export default function EmployeePresence({
                   searchPlaceholder="Cari nama, kode, atau PIN..."
                   emptyText="Karyawan tidak ditemukan."
                 />
+              </Field>
+              <Field label="Sumber">
+                <Select value={filters.source || ''} onChange={(e) => applyFilters({ source: e.target.value })}>
+                  {SOURCE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </Select>
               </Field>
               <Field label="Brand">
                 <Select value={filters.brand_id || ''} onChange={(e) => applyFilters({ brand_id: e.target.value })}>
@@ -481,7 +532,7 @@ export default function EmployeePresence({
               <span className="flex items-center gap-1.5">
                 <CalendarDays className="h-3.5 w-3.5" />
                 {filters.date_from && fmtDate(filters.date_from)} – {filters.date_to && fmtDate(filters.date_to)}
-                <span className="hidden sm:inline">· masuk = tap pertama, keluar = tap terakhir · absen foto & duplikat tidak dihitung</span>
+                <span className="hidden sm:inline">· masuk = absen pertama, keluar = absen terakhir · duplikat & absen ditolak tidak dihitung</span>
               </span>
               {activeFilterCount > 0 && (
                 <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={resetFilters}>
@@ -501,7 +552,7 @@ export default function EmployeePresence({
                   <Network className="text-muted-foreground h-6 w-6" />
                 </div>
                 <div>
-                  <div className="font-medium">Belum ada absen mesin</div>
+                  <div className="font-medium">Belum ada absen</div>
                   <p className="text-muted-foreground text-sm">Coba perluas rentang tanggal atau kurangi filter.</p>
                 </div>
                 {activeFilterCount > 0 && (

@@ -185,7 +185,7 @@ class EmployeePresenceTest extends TestCase
                 ->etc());
     }
 
-    public function test_filter_karyawan_lewat_pin_dan_dropdown_berisi_karyawan_ber_pin(): void
+    public function test_filter_karyawan_lewat_pin_dan_dropdown_berisi_semua_karyawan(): void
     {
         $budi = Employee::create(['name' => 'Budi', 'talenta_employee_id' => 'T2', 'biometric_id' => '202']);
         Employee::create(['name' => 'Tanpa PIN', 'talenta_employee_id' => 'T3']);
@@ -203,13 +203,61 @@ class EmployeePresenceTest extends TestCase
                 ->where('rows.0.pin', '202')
                 ->where('rows.0.employee_id', $budi->id)
                 ->where('filters.employee_id', $budi->id)
-                ->has('employees', 2)
+                // Karyawan tanpa PIN ikut: absen foto/QR tak butuh PIN.
+                ->has('employees', 3)
                 ->where('employees.0.id', $andi->id)
                 ->etc());
 
         // ID asal-asalan diabaikan (bukan UUID) -> tampil semua.
         $this->get('/employee-presence?employee_id=xyz')
             ->assertInertia(fn ($page) => $page->has('rows', 2)->where('filters.employee_id', null)->etc());
+    }
+
+    public function test_filter_sumber_dan_absen_qr_tampil_dengan_outlet(): void
+    {
+        $andi = Employee::where('biometric_id', '101')->first();
+        $hari = today()->toDateString();
+        $this->log($this->kopiA, '101', "$hari 08:00:00");
+        AttendanceLog::create([
+            'source' => AttendanceLog::SOURCE_QR,
+            'employee_id' => $andi->id,
+            'outlet_id' => $this->sate->id,
+            'biometric_id_lokal' => '101',
+            'timestamp' => "$hari 12:00:00",
+            'status_sync' => 'pending_review',
+        ]);
+        // Ditolak supervisor -> tidak dihitung.
+        AttendanceLog::create([
+            'source' => AttendanceLog::SOURCE_QR,
+            'employee_id' => $andi->id,
+            'outlet_id' => $this->sate->id,
+            'biometric_id_lokal' => '101',
+            'timestamp' => "$hari 13:00:00",
+            'status_sync' => 'rejected',
+        ]);
+
+        $this->actingAs($this->user('admin'));
+
+        // Tanpa filter: semua sumber.
+        $this->get('/employee-presence')
+            ->assertInertia(fn ($page) => $page->has('rows', 2)->etc());
+
+        $this->get('/employee-presence?source=qr')
+            ->assertInertia(fn ($page) => $page
+                ->has('rows', 1)
+                ->where('rows.0.source', 'qr')
+                ->where('rows.0.machine_id', null)
+                ->where('rows.0.employee_id', $andi->id)
+                ->where('rows.0.place.outlet_name', 'Sate Menteng')
+                ->where('rows.0.total', 1)
+                ->where('filters.source', 'qr')
+                ->etc());
+
+        $this->get('/employee-presence?source=machine&employee_id=' . $andi->id)
+            ->assertInertia(fn ($page) => $page
+                ->has('rows', 1)
+                ->where('rows.0.machine_id', $this->kopiA->id)
+                ->etc());
     }
 
     public function test_akun_tanpa_attendance_view_ditolak(): void

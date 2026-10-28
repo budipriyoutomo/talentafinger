@@ -8,8 +8,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { Trash2, Plus, Pencil, Fingerprint, Send, X, SlidersHorizontal, ServerOff } from 'lucide-react'
+import { Trash2, Plus, Pencil, Fingerprint, Send, X, SlidersHorizontal, ServerOff, UserPlus, UserCheck } from 'lucide-react'
 import { usePermissions } from '@/lib/permissions'
+import CreateEmployeeUsersDialog from '@/components/CreateEmployeeUsersDialog'
 import EmployeeFingerprintDialog from '@/components/EmployeeFingerprintDialog'
 import BulkDistributeDialog from '@/components/BulkDistributeDialog'
 import RemoveFromMachinesDialog from '@/components/RemoveFromMachinesDialog'
@@ -20,6 +21,7 @@ const emptyForm = {
   name: '',
   talenta_employee_id: '',
   employee_code: '',
+  email: '',
   biometric_id: '',
   company_id: '',
   brand_id: '',
@@ -41,6 +43,10 @@ function csrf() {
   return document.querySelector('meta[name="csrf-token"]').content
 }
 
+// Bisa dibuatkan akun login role Karyawan? (server memeriksa ulang, termasuk
+// email yang sudah dipakai user lain.)
+const canGetAccount = (e) => e.is_active && !e.has_account && !!e.email
+
 // talentaPulled: sudah pernah ada tarik data Talenta yang sukses -> label
 // "Tidak ada di Talenta" baru bermakna setelah itu.
 export default function EmployeesPanel({ employees = [], companies = [], machines = [], talentaPulled = false }) {
@@ -50,6 +56,10 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
   const canManage = can('employee.manage')
   const canSyncFingerprint = can('fingerprint.sync')
   const canDeleteFromMachine = can('fingerprint.delete')
+  // user.manage = buat akun login dari data karyawan.
+  const canManageUsers = can('user.manage')
+  // Karyawan yang dialog "Buat Akun User"-nya terbuka (null = tertutup).
+  const [accountTargets, setAccountTargets] = useState(null)
 
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -69,6 +79,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
   const [biometricFilter, setBiometricFilter] = useState('') // '' | 'has' | 'none'
   const [placementFilter, setPlacementFilter] = useState('') // '' | 'placed' | 'unplaced'
   const [talentaFilter, setTalentaFilter] = useState('')     // '' | 'linked' | 'unlinked' | 'resigned' | 'no_badge'
+  const [accountFilter, setAccountFilter] = useState('')     // '' | 'has' | 'none' | 'ready' | 'no_email'
   // Karyawan yang dialog "Hapus dari Mesin"-nya terbuka (null = tertutup).
   const [removeTargets, setRemoveTargets] = useState(null)
   // Panel filter disembunyikan default, ditampilkan lewat toggle.
@@ -76,9 +87,10 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
 
   const hasActiveFilters =
     companyFilter || brandFilter || outletFilter || statusFilter ||
-    privilegeFilter || fpFilter || biometricFilter || placementFilter || talentaFilter
+    privilegeFilter || fpFilter || biometricFilter || placementFilter || talentaFilter || accountFilter
 
   const resetFilters = () => {
+    setAccountFilter('')
     setCompanyFilter('')
     setBrandFilter('')
     setOutletFilter('')
@@ -168,13 +180,20 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
         if (talentaFilter === 'unlinked' && e.talenta_user_id) return false
         if (talentaFilter === 'resigned' && e.talenta_status !== 'Resigned') return false
         if (talentaFilter === 'no_badge' && e.talenta_employee_id) return false
+        if (accountFilter === 'has' && !e.has_account) return false
+        if (accountFilter === 'none' && e.has_account) return false
+        if (accountFilter === 'ready' && !canGetAccount(e)) return false
+        if (accountFilter === 'no_email' && e.email) return false
         return true
       }),
     [
       employees, companyFilter, brandFilter, outletFilter, statusFilter,
-      privilegeFilter, fpFilter, biometricFilter, placementFilter, talentaFilter,
+      privilegeFilter, fpFilter, biometricFilter, placementFilter, talentaFilter, accountFilter,
     ]
   )
+
+  // Kandidat "Buat Akun User" massal: yang lolos filter & memenuhi syarat.
+  const accountReadyFiltered = useMemo(() => filteredEmployees.filter(canGetAccount), [filteredEmployees])
 
   // Kandidat "Hapus dari Mesin" massal: karyawan NONAKTIF ber-PIN yang lolos filter.
   // Hanya ditawarkan saat filter aktif, supaya tak sengaja menghapus semua yang nonaktif.
@@ -225,6 +244,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
       name: emp.name ?? '',
       talenta_employee_id: emp.talenta_employee_id ?? '',
       employee_code: emp.employee_code ?? '',
+      email: emp.email ?? '',
       biometric_id: emp.biometric_id ?? '',
       company_id: '',
       brand_id: '',
@@ -282,6 +302,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
       name: formData.name,
       talenta_employee_id: formData.talenta_employee_id || null,
       employee_code: formData.employee_code,
+      email: formData.email || null,
       biometric_id: formData.biometric_id || null,
       outlet_ids: formData.outlet_ids,
       device_privilege: Number(formData.device_privilege) || 0,
@@ -387,6 +408,27 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
         ),
       },
       {
+        accessorKey: 'email',
+        header: 'Email',
+        cell: ({ row }) => {
+          const e = row.original
+          return (
+            <div className="flex min-w-0 flex-col gap-1">
+              {e.email ? (
+                <span className="truncate text-sm" title={e.email}>{e.email}</span>
+              ) : (
+                <span className="text-xs text-muted-foreground">-</span>
+              )}
+              {e.has_account && (
+                <Badge variant="success" className="w-fit gap-1 text-[10px]" title="Sudah punya akun login">
+                  <UserCheck className="h-3 w-3" /> punya akun
+                </Badge>
+              )}
+            </div>
+          )
+        },
+      },
+      {
         accessorKey: 'talenta_employee_id',
         header: 'Talenta ID',
         cell: ({ row }) =>
@@ -460,7 +502,8 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
         cell: ({ row }) => {
           const e = row.original
           const canRemove = canDeleteFromMachine && !e.is_active && e.biometric_id
-          if (!canManage && !canRemove) return <span className="text-xs text-muted-foreground">-</span>
+          const canAccount = canManageUsers && canGetAccount(e)
+          if (!canManage && !canRemove && !canAccount) return <span className="text-xs text-muted-foreground">-</span>
           return (
             <div className="flex flex-wrap gap-2">
               {canManage && (
@@ -481,12 +524,18 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                   Hapus dari Mesin
                 </Button>
               )}
+              {canAccount && (
+                <Button onClick={() => setAccountTargets([e])} variant="outline" size="sm" className="gap-1" title="Buat akun login role Karyawan">
+                  <UserPlus className="h-3 w-3" />
+                  Buat Akun
+                </Button>
+              )}
             </div>
           )
         },
       },
     ],
-    [selected, allSelected, selectableIds, canManage, canDeleteFromMachine, talentaPulled]
+    [selected, allSelected, selectableIds, canManage, canDeleteFromMachine, canManageUsers, talentaPulled]
   )
 
   return (
@@ -516,6 +565,17 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
               Hapus dari Mesin ({removableFiltered.length} nonaktif)
             </Button>
           )}
+          {canManageUsers && accountReadyFiltered.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={() => setAccountTargets(accountReadyFiltered)}
+              className="gap-2"
+              title="Karyawan aktif ber-email tanpa akun yang lolos filter"
+            >
+              <UserPlus className="h-4 w-4" />
+              Buat Akun User ({accountReadyFiltered.length})
+            </Button>
+          )}
         </div>
         {canManage && (
           <Button onClick={openCreate} className="gap-2">
@@ -538,7 +598,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                 </h3>
                 {editingLinked && (
                   <p className="text-sm text-indigo-600 dark:text-indigo-400">
-                    Tertaut ke Talenta: nama, kode, dan jabatan akan ditimpa otomatis saat sync berikutnya.
+                    Tertaut ke Talenta: nama, kode, email, dan jabatan akan ditimpa otomatis saat sync berikutnya.
                   </p>
                 )}
                 <p className="text-sm text-muted-foreground">
@@ -578,6 +638,18 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                     onChange={(e) => setFormData({ ...formData, employee_code: e.target.value })}
                     placeholder="opsional"
                   />
+                </div>
+                <div className="space-y-2 md:col-span-3">
+                  <label className="text-sm font-medium text-foreground">Email (opsional)</label>
+                  <Input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="nama@perusahaan.com"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Dipakai sebagai login saat karyawan dibuatkan akun user. Karyawan tertaut Talenta: diisi otomatis dari Talenta.
+                  </p>
                 </div>
               </div>
 
@@ -826,6 +898,16 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                   <option value="no_badge">Talenta ID kosong</option>
                 </Select>
               </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Akun User</label>
+                <Select value={accountFilter} onChange={(e) => setAccountFilter(e.target.value)}>
+                  <option value="">Semua</option>
+                  <option value="has">Sudah punya akun</option>
+                  <option value="none">Belum punya akun</option>
+                  <option value="ready">Siap dibuatkan akun</option>
+                  <option value="no_email">Email kosong</option>
+                </Select>
+              </div>
             </div>
             {hasActiveFilters && (
               <div>
@@ -840,7 +922,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
           </div>
         </CardHeader>
         <CardContent>
-          <DataTable columns={columns} data={filteredEmployees} filterPlaceholder="Cari nama / Talenta ID..." />
+          <DataTable columns={columns} data={filteredEmployees} filterPlaceholder="Cari nama / email / Talenta ID..." />
         </CardContent>
       </Card>
 
@@ -858,6 +940,10 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
           machines={machines}
           onClose={() => setRemoveTargets(null)}
         />
+      )}
+
+      {accountTargets && (
+        <CreateEmployeeUsersDialog employees={accountTargets} onClose={() => setAccountTargets(null)} />
       )}
 
       {bulkOpen && (

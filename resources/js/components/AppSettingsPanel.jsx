@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Settings as SettingsIcon, Plug, Cpu, SlidersHorizontal, Send, Clock, Save, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Settings as SettingsIcon, Plug, Cpu, SlidersHorizontal, Send, Clock, Save, Loader2, CheckCircle2, AlertCircle, UserPlus } from 'lucide-react'
 
 function csrf() {
   return document.querySelector('meta[name="csrf-token"]').content
@@ -22,6 +22,11 @@ const GROUP_META = {
     title: 'Absensi (Auto-kirim & Absen Foto)',
     icon: Send,
     description: 'Jadwal pengiriman otomatis absensi ke Talenta (pengiriman manual tetap tersedia di halaman Logs), serta saklar & radius absen foto.',
+  },
+  auth: {
+    title: 'Registrasi Akun Karyawan',
+    icon: UserPlus,
+    description: 'Karyawan mendaftar sendiri di /register (NIK + email Talenta), verifikasi lewat email, lalu opsional disetujui pengelola outlet.',
   },
   machine: {
     title: 'Sinkronisasi Jam Mesin (Auto)',
@@ -40,7 +45,7 @@ const GROUP_META = {
   },
 }
 
-const GROUP_ORDER = ['talenta', 'attendance', 'machine', 'adms', 'general']
+const GROUP_ORDER = ['talenta', 'attendance', 'auth', 'machine', 'adms', 'general']
 
 export default function AppSettingsPanel({ groups = {} }) {
   // Nilai form: { key: value }. Kosongkan dulu lalu isi dari props.

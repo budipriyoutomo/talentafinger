@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { Trash2, Plus, Pencil, ShieldCheck } from 'lucide-react'
+import { Trash2, Plus, Pencil, ShieldCheck, UserRound, Users } from 'lucide-react'
 
 function csrf() {
   return document.querySelector('meta[name="csrf-token"]').content
@@ -23,6 +23,20 @@ const ROLE_VARIANT = {
   viewer: 'outline',
   employee: 'info',
 }
+
+// Status akun hasil registrasi mandiri karyawan (/register).
+const REGISTRATION_LABEL = {
+  unverified: 'belum verifikasi email',
+  pending: 'menunggu persetujuan',
+  rejected: 'pendaftaran ditolak',
+}
+
+// Daftar user dipisah dua tab: pengguna panel vs akun khusus karyawan (role
+// employee). User role lain yang JUGA karyawan tetap di tab pengguna panel.
+const USER_TABS = [
+  { key: 'staff', label: 'User', icon: Users, match: (u) => u.role !== 'employee' },
+  { key: 'employee', label: 'Karyawan', icon: UserRound, match: (u) => u.role === 'employee' },
+]
 
 const emptyForm = {
   name: '',
@@ -50,6 +64,10 @@ export default function UsersPanel({ users = [], roles = [], companies = [], emp
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [formData, setFormData] = useState(emptyForm)
+  const [tab, setTab] = useState('staff')
+
+  const activeTab = USER_TABS.find((t) => t.key === tab)
+  const tabUsers = useMemo(() => users.filter(activeTab.match), [users, activeTab])
 
   const roleOf = (key) => roles.find((r) => r.key === key)
   const roleLabel = (key) => roleOf(key)?.name ?? key
@@ -68,9 +86,11 @@ export default function UsersPanel({ users = [], roles = [], companies = [], emp
 
   const openCreate = () => {
     setEditingId(null)
-    // Default 'operator' bila boleh diberikan, selain itu role pertama yang boleh.
-    const fallback = roleOf(emptyForm.role)?.assignable
-      ? emptyForm.role
+    // Default mengikuti tab: 'employee' di tab Karyawan, 'operator' di tab User
+    // (bila boleh diberikan), selain itu role pertama yang boleh.
+    const preferred = tab === 'employee' ? 'employee' : emptyForm.role
+    const fallback = roleOf(preferred)?.assignable
+      ? preferred
       : roles.find((r) => r.assignable)?.key ?? ''
     setFormData({ ...emptyForm, role: fallback })
     setShowForm(true)
@@ -163,6 +183,8 @@ export default function UsersPanel({ users = [], roles = [], companies = [], emp
       })
       if (res.ok) {
         toast.success(editingId ? 'User diperbarui.' : 'User ditambahkan.')
+        // Pindah ke tab tempat user itu berada (mis. role baru diganti ke Karyawan).
+        setTab(formData.role === 'employee' ? 'employee' : 'staff')
         closeForm()
         router.reload({ only: ['users', 'roles'] })
       } else {
@@ -221,8 +243,18 @@ export default function UsersPanel({ users = [], roles = [], companies = [], emp
                 password sementara
               </Badge>
             )}
-            {row.original.is_active === false && (
-              <Badge variant="destructive" className="text-[10px]" title="Tidak bisa login">nonaktif</Badge>
+            {row.original.registration_status ? (
+              <Badge
+                variant={row.original.registration_status === 'rejected' ? 'destructive' : 'warning'}
+                className="text-[10px]"
+                title="Daftar sendiri lewat /register. Centang Akun aktif = menyetujui."
+              >
+                {REGISTRATION_LABEL[row.original.registration_status] ?? row.original.registration_status}
+              </Badge>
+            ) : (
+              row.original.is_active === false && (
+                <Badge variant="destructive" className="text-[10px]" title="Tidak bisa login">nonaktif</Badge>
+              )
             )}
           </div>
         ),
@@ -257,7 +289,7 @@ export default function UsersPanel({ users = [], roles = [], companies = [], emp
       },
       {
         id: 'scope',
-        header: 'Wewenang Data',
+        header: tab === 'employee' ? 'Karyawan' : 'Wewenang Data',
         cell: ({ row }) => {
           const summary = scopeSummary(row.original)
 
@@ -298,7 +330,7 @@ export default function UsersPanel({ users = [], roles = [], companies = [], emp
         ),
       },
     ],
-    [currentUserId, employees, roles]
+    [currentUserId, employees, roles, tab]
   )
 
   return (
@@ -309,7 +341,7 @@ export default function UsersPanel({ users = [], roles = [], companies = [], emp
         </p>
         <Button onClick={showForm ? closeForm : openCreate} className="gap-2">
           <Plus className="h-4 w-4" />
-          {showForm ? 'Cancel' : 'Tambah User'}
+          {showForm ? 'Cancel' : tab === 'employee' ? 'Tambah Akun Karyawan' : 'Tambah User'}
         </Button>
       </div>
 
@@ -521,16 +553,40 @@ export default function UsersPanel({ users = [], roles = [], companies = [], emp
         </Card>
       )}
 
+      <div className="flex gap-2 border-b border-border">
+        {USER_TABS.map(({ key, label, icon: Icon, match }) => (
+          <Button
+            key={key}
+            variant="ghost"
+            onClick={() => setTab(key)}
+            className={`gap-2 rounded-none border-b-2 ${
+              tab === key
+                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-muted-foreground'
+            }`}
+          >
+            <Icon className="h-4 w-4" />
+            {label}
+            <Badge variant="secondary" className="text-[10px]">{users.filter(match).length}</Badge>
+          </Button>
+        ))}
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-indigo-500" />
-            Daftar User
+            {tab === 'employee' ? 'Akun Karyawan' : 'Daftar User'}
           </CardTitle>
-          <CardDescription>{users.length} user terdaftar</CardDescription>
+          <CardDescription>
+            {tab === 'employee'
+              ? `${tabUsers.length} akun role Karyawan — hanya untuk absen foto / QR, tanpa akses admin panel.`
+              : `${tabUsers.length} user pengguna panel (termasuk yang juga ditautkan ke karyawan).`}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <DataTable columns={columns} data={users} filterPlaceholder="Cari nama / email..." />
+          {/* key = tab: pencarian & halaman tabel direset saat pindah tab. */}
+          <DataTable key={tab} columns={columns} data={tabUsers} filterPlaceholder="Cari nama / email..." />
         </CardContent>
       </Card>
     </div>

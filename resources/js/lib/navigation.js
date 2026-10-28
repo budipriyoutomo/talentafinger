@@ -16,6 +16,7 @@ import {
   Database,
   Camera,
   ScanLine,
+  UserPlus,
 } from 'lucide-react'
 
 /**
@@ -66,6 +67,7 @@ export const navGroups = [
     items: [
       { path: '/employee-management', label: 'Employees', icon: UserCircle, permission: 'employee.view' },
       { path: '/fingerprints', label: 'Sidik Jari', icon: Fingerprint, permission: 'fingerprint.view' },
+      { path: '/registrations', label: 'Pendaftaran Akun', title: 'Pendaftaran Akun Karyawan', icon: UserPlus, permission: 'user.registration.review' },
     ],
   },
   {

@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\AuditLog;
+use App\Models\User;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -32,5 +33,6 @@ Schedule::command('talenta:sync-employees')->everyMinute()->withoutOverlapping()
 // (setting mekari.file_retention_days) supaya disk VPS tak penuh.
 Schedule::command('talenta:prune-files')->dailyAt('02:30')->withoutOverlapping();
 
-// Buang audit log yang lebih tua dari AuditLog::RETENTION_DAYS (365 hari).
-Schedule::command('model:prune', ['--model' => [AuditLog::class]])->dailyAt('03:00')->withoutOverlapping();
+// Buang audit log yang lebih tua dari AuditLog::RETENTION_DAYS (365 hari), dan
+// pendaftaran akun karyawan yang tak pernah diverifikasi / ditolak (User::prunable).
+Schedule::command('model:prune', ['--model' => [AuditLog::class, User::class]])->dailyAt('03:00')->withoutOverlapping();

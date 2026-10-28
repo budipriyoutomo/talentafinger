@@ -254,6 +254,8 @@ class DashboardController extends Controller
         $this->authorize('viewAny', Employee::class);
 
         $user = $request->user();
+        // Karyawan yang sudah punya akun login (kolom "Akun" + tombol Buat Akun).
+        $withAccount = User::whereNotNull('employee_id')->pluck('employee_id')->flip();
 
         return Inertia::render('EmployeeManagement', [
             'employees' => Employee::visibleTo($user)
@@ -265,6 +267,9 @@ class DashboardController extends Controller
                 ->map(fn($e) => [
                     'id' => $e->id,
                     'name' => $e->name,
+                    // Disalin dari Talenta oleh sync karyawan.
+                    'email' => $e->email,
+                    'has_account' => $withAccount->has($e->id),
                     'talenta_employee_id' => $e->talenta_employee_id,
                     'employee_code' => $e->employee_code,
                     'biometric_id' => $e->biometric_id,

@@ -227,6 +227,26 @@ class SettingSeeder extends Seeder
                 'default' => '180',
             ],
 
+            // ===== Registrasi mandiri akun karyawan =====
+            [
+                'key' => 'auth.registration_enabled',
+                'group' => 'auth',
+                'type' => 'boolean',
+                'label' => 'Aktifkan Registrasi Karyawan',
+                'description' => 'Karyawan bisa membuat akun sendiri di /register dengan NIK + email yang tercatat di Talenta, '
+                    . 'lalu memverifikasi lewat link di email. Butuh SMTP (MAIL_*) di .env.',
+                'default' => '0',
+            ],
+            [
+                'key' => 'auth.registration_require_approval',
+                'group' => 'auth',
+                'type' => 'boolean',
+                'label' => 'Wajib Persetujuan Pengelola',
+                'description' => 'Bila aktif, akun yang sudah verifikasi email baru bisa login setelah disetujui user ber-permission '
+                    . '"Setujui / tolak pendaftaran akun karyawan" di outlet karyawan itu (menu Pendaftaran Akun).',
+                'default' => '1',
+            ],
+
             // ===== Sinkronisasi jam mesin (AUTO) =====
             // Sinkron MANUAL selalu tersedia lewat tombol "Sync Time" di halaman Machines.
             [

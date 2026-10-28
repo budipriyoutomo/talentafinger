@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\UserScope;
 use App\Services\AccessDelegation;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
@@ -114,6 +115,15 @@ class UserController extends Controller
         if (array_key_exists('is_active', $data)) {
             $user->is_active = $data['is_active'];
         }
+        // Mengaktifkan akun pendaftar (belum verifikasi / menunggu / ditolak)
+        // dari form ini = menyetujuinya; tanpa ini login tetap tertahan statusnya.
+        if ($user->is_active && $user->isRegistrationIncomplete()) {
+            $user->forceFill([
+                'registration_status' => null,
+                'reviewed_by' => $request->user()->id,
+                'reviewed_at' => now(),
+            ]);
+        }
         // Tautan karyawan: wajib untuk role employee, opsional untuk role lain
         // (user yang juga karyawan -> ikut dapat izin absen foto / QR).
         $user->employee_id = $data['employee_id'] ?? null;
@@ -138,6 +148,97 @@ class UserController extends Controller
         }
 
         return response()->json(static::present($user->fresh('dataScopes')));
+    }
+
+    /**
+     * POST /api/users/from-employees — buat akun role Karyawan dari data
+     * karyawan (email hasil sync Talenta), satu atau banyak sekaligus.
+     *
+     * Semua akun memakai password AWAL yang sama dari admin dan wajib diganti
+     * saat login pertama (must_change_password). Hash dihitung SEKALI: bcrypt
+     * per akun untuk ratusan karyawan akan memakan puluhan detik.
+     *
+     * Karyawan yang tak bisa dibuatkan akun DILEWATI dengan alasannya (bukan
+     * menggagalkan seluruh batch): tanpa email, email tak valid / sudah dipakai
+     * user lain, sudah punya akun, atau nonaktif.
+     */
+    public function createFromEmployees(Request $request)
+    {
+        $data = $request->validate([
+            'employee_ids' => 'required|array|min:1|max:5000',
+            'employee_ids.*' => 'required|uuid',
+            'password' => ['required', 'string', Password::defaults()],
+        ]);
+
+        $delegation = AccessDelegation::for($request->user());
+        if (! $delegation->canAssignRole(Role::EMPLOYEE)) {
+            throw new AccessDeniedHttpException('Anda tidak boleh memberikan role Karyawan.');
+        }
+
+        $ids = array_values(array_unique($data['employee_ids']));
+        // Karyawan di luar wewenang aktor tak ikut terambil (sama dengan canLinkEmployee).
+        $employees = Employee::visibleTo($request->user())->whereIn('id', $ids)->orderBy('name')->get();
+
+        $linked = User::whereIn('employee_id', $ids)->pluck('employee_id')->flip();
+        $emailOf = fn (Employee $e) => mb_strtolower(trim((string) $e->email));
+        $candidateEmails = $employees->map($emailOf)->filter()->unique()->values()->all();
+        $takenEmails = $candidateEmails
+            ? User::whereIn(DB::raw('LOWER(email)'), $candidateEmails)->pluck('email')
+                ->map(fn ($e) => mb_strtolower($e))->flip()
+            : collect();
+
+        $passwordHash = Hash::make($data['password']);
+        $created = [];
+        $skipped = [];
+        $seenEmails = [];
+
+        foreach ($employees as $employee) {
+            $email = $emailOf($employee);
+            $reason = match (true) {
+                $linked->has($employee->id) => 'sudah punya akun',
+                ! $employee->is_active => 'karyawan nonaktif',
+                $email === '' => 'email kosong',
+                ! filter_var($email, FILTER_VALIDATE_EMAIL) => 'email tidak valid',
+                $takenEmails->has($email), isset($seenEmails[$email]) => 'email sudah dipakai user lain',
+                default => null,
+            };
+
+            if ($reason) {
+                $skipped[] = ['name' => $employee->name, 'reason' => $reason];
+                continue;
+            }
+
+            $seenEmails[$email] = true;
+            $user = User::create([
+                'name' => $employee->name,
+                'email' => $email,
+                'password' => $passwordHash,
+                'must_change_password' => true,
+                'role' => Role::EMPLOYEE,
+                'is_active' => true,
+                'employee_id' => $employee->id,
+            ]);
+            AuditLog::record('user.created', $user, $this->auditState($user) + ['source' => 'employee']);
+            $created[] = $user->id;
+        }
+
+        // Id yang tak terambil = di luar wewenang / tak ada.
+        $outside = count($ids) - $employees->count();
+        if ($outside > 0) {
+            $skipped[] = ['name' => "{$outside} karyawan", 'reason' => 'di luar wewenang Anda / tidak ditemukan'];
+        }
+
+        $message = count($created) . ' akun dibuat';
+        if ($skipped) {
+            $message .= ', ' . count($skipped) . ' dilewati';
+        }
+
+        return response()->json([
+            'success' => true,
+            'created' => count($created),
+            'skipped' => $skipped,
+            'message' => $message . '.',
+        ]);
     }
 
     private function isLastActiveAdmin(User $user): bool
@@ -282,7 +383,7 @@ class UserController extends Controller
         $byType = $user->dataScopes->groupBy('scope_type');
 
         return [
-            ...$user->only(['id', 'name', 'email', 'role', 'is_active', 'employee_id', 'must_change_password', 'created_at']),
+            ...$user->only(['id', 'name', 'email', 'role', 'is_active', 'employee_id', 'must_change_password', 'registration_status', 'created_at']),
             'last_login_at' => $user->last_login_at?->format('Y-m-d H:i:s'),
             'last_login_ip' => $user->last_login_ip,
             'company_ids' => $byType->get('company')?->pluck('scope_id')->all() ?? [],

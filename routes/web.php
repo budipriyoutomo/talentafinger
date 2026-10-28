@@ -11,6 +11,8 @@ use App\Http\Controllers\KioskDeviceController;
 use App\Http\Controllers\ManualAttendanceController;
 use App\Http\Controllers\PasswordController;
 use App\Http\Controllers\QrAttendanceController;
+use App\Http\Controllers\RegistrationController;
+use App\Http\Controllers\RegistrationReviewController;
 
 // ADMS iClock endpoints — dipanggil mesin fingerprint, harus tetap PUBLIK.
 Route::get('/iclock/cdata', [AdmsController::class, 'handshake']);
@@ -32,8 +34,16 @@ Route::get('/absen/qr', [QrAttendanceController::class, 'scan'])->middleware('th
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
     Route::post('/login', [AuthController::class, 'login']);
+
+    // Registrasi mandiri akun karyawan (404 bila setting auth.registration_enabled mati).
+    Route::get('/register', [RegistrationController::class, 'show']);
+    Route::post('/register', [RegistrationController::class, 'store'])->middleware('throttle:5,1');
 });
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth')->name('logout');
+// Link dari email verifikasi (signed). Di luar guest: link boleh dibuka di
+// browser yang kebetulan sedang login akun lain.
+Route::get('/register/verify/{id}/{hash}', [RegistrationController::class, 'verify'])
+    ->middleware('throttle:10,1')->name('register.verify');
 
 // Dashboard UI routes — wajib login.
 Route::middleware('auth')->group(function () {
@@ -47,6 +57,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/fingerprints', [DashboardController::class, 'fingerprints']);
     Route::get('/settings', [DashboardController::class, 'settings']);
     Route::get('/audit-logs', [AuditLogController::class, 'index']);
+    // Antrian pendaftaran akun karyawan (permission user.registration.review).
+    Route::get('/registrations', [RegistrationReviewController::class, 'index']);
 
     // Halaman absen foto untuk akun karyawan (role employee).
     Route::get('/absen', [ManualAttendanceController::class, 'show']);

@@ -35,6 +35,8 @@ class EmployeeController extends Controller
             'name' => 'required',
             'talenta_employee_id' => 'required|unique:employees,talenta_employee_id',
             'employee_code' => 'nullable',
+            // Karyawan tertaut Talenta: email ditimpa lagi oleh sync karyawan.
+            'email' => 'nullable|email|max:150',
             'biometric_id' => 'nullable|string|max:50',
             'outlet_ids' => 'nullable|array',
             'outlet_ids.*' => 'exists:outlets,id',
@@ -75,6 +77,8 @@ class EmployeeController extends Controller
                 Rule::unique('employees', 'talenta_employee_id')->ignore($id),
             ],
             'employee_code' => 'nullable',
+            // Karyawan tertaut Talenta: email ditimpa lagi oleh sync karyawan.
+            'email' => 'nullable|email|max:150',
             'biometric_id' => 'nullable|string|max:50',
             'outlet_ids' => 'nullable|array',
             'outlet_ids.*' => 'exists:outlets,id',

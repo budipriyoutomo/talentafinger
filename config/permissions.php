@@ -45,6 +45,7 @@ return [
         'org.manage' => 'Kelola struktur organisasi (Company, Brand, Outlet)',
         'setting.manage' => 'Ubah pengaturan aplikasi',
         'user.manage' => 'Kelola user dan scope akses',
+        'user.registration.review' => 'Setujui / tolak pendaftaran akun karyawan',
         'role.manage' => 'Kelola role & permission-nya',
         'audit.view' => 'Lihat audit log (seluruh aktivitas, tanpa batas outlet)',
 
@@ -81,6 +82,8 @@ return [
         'org.manage' => 'Mengubah Company, Brand, Outlet, termasuk titik koordinat outlet untuk absen foto.',
         'setting.manage' => 'Membuka Pengaturan Aplikasi, termasuk kredensial Talenta dan saklar absen foto.',
         'user.manage' => 'Membuat / mengubah user, memilih role, dan menugaskan outlet.',
+        'user.registration.review' => 'Membuka menu Pendaftaran Akun: menyetujui / menolak karyawan yang mendaftar sendiri. '
+            . 'Hanya karyawan di outlet yang ditugaskan ke user.',
         'role.manage' => 'Membuka halaman ini: membuat dan mengubah role.',
         'audit.view' => 'Membuka Audit Log: riwayat semua perubahan oleh semua user.',
 
