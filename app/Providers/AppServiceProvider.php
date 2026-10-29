@@ -23,6 +23,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Database production berisi data yang tak bisa dibuat ulang: blokir
+        // migrate:fresh / refresh / reset / rollback & db:wipe di production.
+        DB::prohibitDestructiveCommands($this->app->isProduction());
+
         // Rate limit ke Talenta (FR-09) ditegakkan langsung di
         // MekariTalentaService::throttle(), bukan lewat RateLimiter::for().
 

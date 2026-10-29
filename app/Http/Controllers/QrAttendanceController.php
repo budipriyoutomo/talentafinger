@@ -96,6 +96,7 @@ class QrAttendanceController extends Controller
             'qr_error' => $request->session()->pull(self::SESSION_ERROR),
             'blocked_reason' => $blocked,
             'radius_meters' => $this->radius(),
+            'max_accuracy_meters' => $this->maxAccuracy(),
             'max_photo_kb' => AttendancePhoto::maxKb(),
             'recent' => $employee ? $this->recentLogs($employee) : [],
             'can_manual_photo' => $user->hasPermission('attendance.manual.create')
@@ -133,64 +134,73 @@ class QrAttendanceController extends Controller
         AttendancePhoto::assertUploadValid($request);
         $data = $request->validate(AttendancePhoto::rules(), AttendancePhoto::messages());
 
-        if (AttendanceLog::recentEmployeeSubmission($employee->id, ManualAttendanceController::COOLDOWN_MINUTES)) {
-            return response()->json([
-                'message' => 'Anda baru saja absen. Tunggu ' . ManualAttendanceController::COOLDOWN_MINUTES
-                    . ' menit sebelum absen lagi.',
-            ], 429);
-        }
+        // Akurasi GPS buruk (mis. ±1.500 m) membuat geofence tak bermakna:
+        // titik tengahnya bisa kebetulan masuk radius padahal orangnya jauh.
+        $maxAccuracy = $this->maxAccuracy();
+        $accuracy = isset($data['accuracy']) ? (float) $data['accuracy'] : null;
 
-        // Geofence ke outlet KIOSK (bukan outlet terdekat): QR membuktikan karyawan
-        // di depan tablet itu, lokasi HP harus ikut membuktikan hal yang sama.
-        $outlet = $kiosk->outlet;
-        $lat = (float) $data['latitude'];
-        $lng = (float) $data['longitude'];
-        $distance = (int) round(Geo::distanceMeters($lat, $lng, $outlet->latitude, $outlet->longitude));
-        $radius = $this->radius();
-
-        if ($distance > $radius) {
+        if ($accuracy === null || $accuracy > $maxAccuracy) {
             return response()->json([
-                'message' => "Anda berada ±{$distance} m dari {$outlet->name}. Absen QR hanya bisa dalam radius {$radius} m.",
-                'distance_meters' => $distance,
-                'radius_meters' => $radius,
+                'message' => 'Sinyal lokasi kurang akurat (±' . ($accuracy !== null ? round($accuracy) : '?') . " m, maksimal ±{$maxAccuracy} m). "
+                    . 'Aktifkan GPS / mode akurasi tinggi, keluar ke area terbuka, lalu ambil lokasi ulang.',
+                'accuracy_meters' => $accuracy !== null ? (int) round($accuracy) : null,
+                'max_accuracy_meters' => $maxAccuracy,
             ], 422);
         }
 
-        $path = AttendancePhoto::store($request->file('photo'));
+        return ManualAttendanceController::submitExclusively($employee->id, function () use ($request, $employee, $kiosk, $scan, $data, $accuracy) {
+            // Geofence ke outlet KIOSK (bukan outlet terdekat): QR membuktikan karyawan
+            // di depan tablet itu, lokasi HP harus ikut membuktikan hal yang sama.
+            $outlet = $kiosk->outlet;
+            $lat = (float) $data['latitude'];
+            $lng = (float) $data['longitude'];
+            $distance = (int) round(Geo::distanceMeters($lat, $lng, $outlet->latitude, $outlet->longitude));
+            $radius = $this->radius();
 
-        // Waktu absen = waktu SCAN (bukti hadir di depan kiosk), dalam jam LOKAL
-        // perangkat seperti log mesin & absen foto, karena itulah yang dikirim ke Talenta.
-        $tz = Setting::value('adms.device_timezone', 'Asia/Jakarta');
+            if ($distance > $radius) {
+                return response()->json([
+                    'message' => "Anda berada ±{$distance} m dari {$outlet->name}. Absen QR hanya bisa dalam radius {$radius} m.",
+                    'distance_meters' => $distance,
+                    'radius_meters' => $radius,
+                ], 422);
+            }
 
-        try {
-            $log = AttendanceLog::create([
-                'source' => AttendanceLog::SOURCE_QR,
-                'employee_id' => $employee->id,
-                'outlet_id' => $kiosk->outlet_id,
-                'kiosk_id' => $kiosk->id,
-                'machine_id' => null,
-                'biometric_id_lokal' => $employee->biometric_id,
-                'timestamp' => Carbon::createFromTimestamp($scan['scanned_at'])->setTimezone($tz)->format('Y-m-d H:i:s'),
-                'status_sync' => 'pending_review',
-                'photo_path' => $path,
-                'latitude' => $lat,
-                'longitude' => $lng,
-                'accuracy_meters' => isset($data['accuracy']) ? (int) round($data['accuracy']) : null,
-                'distance_meters' => $distance,
-            ]);
-        } catch (\Throwable $e) {
-            // Jangan tinggalkan foto yatim di disk bila log gagal tersimpan.
-            Storage::disk(AttendancePhoto::DISK)->delete($path);
-            throw $e;
-        }
+            $path = AttendancePhoto::store($request->file('photo'));
 
-        // Satu scan = satu absen.
-        $request->session()->forget(self::SESSION_SCAN);
+            // Waktu absen = waktu SCAN (bukti hadir di depan kiosk), dalam jam LOKAL
+            // perangkat seperti log mesin & absen foto, karena itulah yang dikirim ke Talenta.
+            $tz = Setting::value('adms.device_timezone', 'Asia/Jakarta');
 
-        return response()->json([
-            'message' => "Absen tercatat di {$outlet->name} (±{$distance} m). Menunggu persetujuan supervisor.",
-            'log' => $this->presentForEmployee($log->load(['outlet', 'kiosk'])),
-        ], 201);
+            try {
+                $log = AttendanceLog::create([
+                    'source' => AttendanceLog::SOURCE_QR,
+                    'employee_id' => $employee->id,
+                    'outlet_id' => $kiosk->outlet_id,
+                    'kiosk_id' => $kiosk->id,
+                    'machine_id' => null,
+                    'biometric_id_lokal' => $employee->biometric_id,
+                    'timestamp' => Carbon::createFromTimestamp($scan['scanned_at'])->setTimezone($tz)->format('Y-m-d H:i:s'),
+                    'status_sync' => 'pending_review',
+                    'photo_path' => $path,
+                    'latitude' => $lat,
+                    'longitude' => $lng,
+                    'accuracy_meters' => (int) round($accuracy),
+                    'distance_meters' => $distance,
+                ]);
+            } catch (\Throwable $e) {
+                // Jangan tinggalkan foto yatim di disk bila log gagal tersimpan.
+                Storage::disk(AttendancePhoto::DISK)->delete($path);
+                throw $e;
+            }
+
+            // Satu scan = satu absen.
+            $request->session()->forget(self::SESSION_SCAN);
+
+            return response()->json([
+                'message' => "Absen tercatat di {$outlet->name} (±{$distance} m). Menunggu persetujuan supervisor.",
+                'log' => $this->presentForEmployee($log->load(['outlet', 'kiosk'])),
+            ], 201);
+        });
     }
 
     /** Tamu -> simpan tujuan lalu ke /login. Session (termasuk scan) selamat melewati login. */
@@ -279,6 +289,12 @@ class QrAttendanceController extends Controller
     private function radius(): int
     {
         return max(10, (int) Setting::value('attendance.qr_radius', 100));
+    }
+
+    /** Akurasi GPS terburuk (meter) yang masih diterima. */
+    private function maxAccuracy(): int
+    {
+        return max(10, (int) Setting::value('attendance.qr_max_accuracy', 100));
     }
 
     private function scanTtl(): int

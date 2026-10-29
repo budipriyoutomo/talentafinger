@@ -16,7 +16,10 @@ class RegistrationReviewed extends Notification implements ShouldQueue
         public bool $approved,
         public string $loginUrl,
         public ?string $reason = null,
-    ) {}
+    ) {
+        // Antrean sendiri: tak tertahan di belakang job zk_sync / pengiriman absensi.
+        $this->onQueue('mail');
+    }
 
     public function via(object $notifiable): array
     {

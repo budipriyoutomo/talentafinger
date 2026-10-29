@@ -117,7 +117,8 @@ class UserController extends Controller
         }
         // Mengaktifkan akun pendaftar (belum verifikasi / menunggu / ditolak)
         // dari form ini = menyetujuinya; tanpa ini login tetap tertahan statusnya.
-        if ($user->is_active && $user->isRegistrationIncomplete()) {
+        $approvingRegistration = $user->is_active && $user->isRegistrationIncomplete();
+        if ($approvingRegistration) {
             $user->forceFill([
                 'registration_status' => null,
                 'reviewed_by' => $request->user()->id,
@@ -135,6 +136,10 @@ class UserController extends Controller
             $user->must_change_password = $user->id !== $request->user()->id;
         }
         $user->save();
+
+        if ($approvingRegistration) {
+            $user->linkRegistrationOutlet();
+        }
 
         $this->syncScopes($user, $data);
 

@@ -3,10 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
-use App\Models\Employee;
 use App\Models\User;
 use App\Notifications\RegistrationReviewed;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
@@ -14,7 +14,9 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
  * Halaman /registrations: antrian pendaftaran akun karyawan (lihat
  * RegistrationController). Permission user.registration.review + scope:
  * penyetuju hanya melihat & memutus pendaftar yang karyawannya punya minimal
- * satu outlet dalam scope-nya (Employee::visibleTo).
+ * satu outlet dalam scope-nya, atau yang memilih outlet dalam scope-nya saat
+ * mendaftar (User::registrationsVisibleTo). Disetujui -> karyawan ditautkan
+ * ke outlet pilihannya.
  */
 class RegistrationReviewController extends Controller
 {
@@ -28,10 +30,10 @@ class RegistrationReviewController extends Controller
             ? $request->query('status')
             : User::REG_PENDING;
 
-        $base = fn () => User::whereIn('employee_id', Employee::visibleTo($request->user())->select('id'));
+        $base = fn () => User::registrationsVisibleTo($request->user());
 
         $registrations = $base()
-            ->with(['employee.outlets:id,name', 'reviewer:id,name'])
+            ->with(['employee.outlets:id,name', 'registrationOutlet.brand.company', 'reviewer:id,name'])
             ->where('registration_status', $status)
             ->orderBy($status === User::REG_REJECTED ? 'reviewed_at' : 'registered_at', $status === User::REG_REJECTED ? 'desc' : 'asc')
             ->limit(500)
@@ -43,6 +45,14 @@ class RegistrationReviewController extends Controller
                 'nik' => $u->employee?->employee_code,
                 'job_position' => $u->employee?->job_position,
                 'outlets' => $u->employee?->outlets->pluck('name')->all() ?? [],
+                // Outlet pilihan pendaftar; is_new = karyawan belum tertaut ke
+                // outlet ini (akan ditautkan saat disetujui).
+                'claimed_outlet' => $u->registrationOutlet ? [
+                    'name' => $u->registrationOutlet->name,
+                    'brand' => $u->registrationOutlet->brand?->name,
+                    'company' => $u->registrationOutlet->brand?->company?->name,
+                    'is_new' => ! $u->employee?->outlets->contains('id', $u->registration_outlet_id),
+                ] : null,
                 'employee_active' => (bool) $u->employee?->is_active,
                 'registered_at' => $u->registered_at?->format('Y-m-d H:i'),
                 'email_verified_at' => $u->email_verified_at?->format('Y-m-d H:i'),
@@ -69,15 +79,22 @@ class RegistrationReviewController extends Controller
             return response()->json(['message' => 'Karyawan ini sudah nonaktif. Tolak pendaftarannya.'], 422);
         }
 
-        $user->forceFill([
-            'registration_status' => null,
-            'is_active' => true,
-            'reviewed_by' => $request->user()->id,
-            'reviewed_at' => now(),
-            'rejection_reason' => null,
-        ])->save();
+        DB::transaction(function () use ($request, $user) {
+            $user->forceFill([
+                'registration_status' => null,
+                'is_active' => true,
+                'reviewed_by' => $request->user()->id,
+                'reviewed_at' => now(),
+                'rejection_reason' => null,
+            ])->save();
 
-        AuditLog::record('user.registration_approved', $user, ['employee' => $user->employee->name]);
+            $user->linkRegistrationOutlet();
+        });
+
+        AuditLog::record('user.registration_approved', $user, [
+            'employee' => $user->employee->name,
+            'outlet' => $user->registrationOutlet?->name,
+        ]);
         $user->notify(new RegistrationReviewed(true, url('/login')));
 
         return response()->json(['success' => true, 'message' => "Akun {$user->name} disetujui."]);
@@ -103,12 +120,12 @@ class RegistrationReviewController extends Controller
         return response()->json(['success' => true, 'message' => "Pendaftaran {$user->name} ditolak."]);
     }
 
-    /** Pendaftar berstatus pending yang karyawannya dalam scope penyetuju. */
+    /** Pendaftar berstatus pending dalam scope penyetuju (User::registrationsVisibleTo). */
     private function findPending(Request $request, string $id): User
     {
         $user = User::with('employee')->where('registration_status', User::REG_PENDING)->findOrFail($id);
 
-        if (! Employee::visibleTo($request->user())->whereKey($user->employee_id)->exists()) {
+        if (! User::registrationsVisibleTo($request->user())->whereKey($user->id)->exists()) {
             throw new AccessDeniedHttpException('Karyawan ini berada di luar wewenang Anda.');
         }
 

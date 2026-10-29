@@ -96,7 +96,8 @@ class AuthController extends Controller
         AuditLog::record('auth.login_blocked', $user, ['registration_status' => $user->registration_status], actor: $user);
 
         $message = match ($user->registration_status) {
-            User::REG_UNVERIFIED => $this->resendVerification($user),
+            // Praktis tak tercapai: password akun unverified acak (dibuat lewat link email).
+            User::REG_UNVERIFIED => 'Email belum diverifikasi. Daftar ulang di halaman Registrasi untuk menerima link baru.',
             User::REG_PENDING => 'Pendaftaran Anda menunggu persetujuan pengelola outlet. Pemberitahuan dikirim lewat email.',
             default => 'Pendaftaran Anda ditolak'
                 .($user->rejection_reason ? ": {$user->rejection_reason}" : '')
@@ -104,24 +105,6 @@ class AuthController extends Controller
         };
 
         throw ValidationException::withMessages(['email' => $message]);
-    }
-
-    /**
-     * Login yang benar pada akun belum verifikasi = minta link baru (pengganti
-     * tombol "kirim ulang" publik yang bisa dipakai mengintip email terdaftar).
-     */
-    private function resendVerification(User $user): string
-    {
-        $key = 'register-resend:'.$user->id;
-
-        if (RateLimiter::tooManyAttempts($key, 1)) {
-            return 'Email belum diverifikasi. Link sudah dikirim — cek kotak masuk / folder spam. '
-                .'Kirim ulang bisa dalam '.RateLimiter::availableIn($key).' detik.';
-        }
-
-        RegistrationController::sendVerificationLink($user);
-
-        return 'Email belum diverifikasi. Link verifikasi baru telah dikirim ke email Anda.';
     }
 
     private function throttleKey(Request $request): string

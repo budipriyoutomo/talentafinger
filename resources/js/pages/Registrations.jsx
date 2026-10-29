@@ -65,7 +65,8 @@ export default function Registrations({ status = 'pending', registrations = [], 
       <div className="space-y-6">
         <p className="text-sm text-muted-foreground">
           Karyawan yang mendaftar sendiri lewat halaman /register dengan NIK + email Talenta. Hanya karyawan di outlet
-          yang ditugaskan ke Anda yang tampil di sini.
+          yang ditugaskan ke Anda, atau yang memilih outlet Anda saat mendaftar, yang tampil di sini. Saat disetujui,
+          karyawan otomatis ditautkan ke outlet yang dipilihnya (bertanda “outlet baru” bila belum tercatat).
         </p>
 
         <div className="flex flex-wrap gap-2">
@@ -84,9 +85,9 @@ export default function Registrations({ status = 'pending', registrations = [], 
               {TABS.find((t) => t.key === status)?.label}
             </CardTitle>
             <CardDescription>
-              {status === 'unverified' && 'Belum mengklik link di email. Dibuang otomatis setelah 7 hari.'}
+              {status === 'unverified' && 'Belum membuat password lewat link di email. Dibuang otomatis setelah 7 hari.'}
               {status === 'pending' && 'Email sudah terverifikasi; akun aktif setelah Anda setujui.'}
-              {status === 'rejected' && 'Karyawan bisa mendaftar ulang. Dibuang otomatis 30 hari setelah ditolak.'}
+              {status === 'rejected' && 'Dibuang otomatis 30 hari setelah ditolak; baru setelah itu karyawan bisa mendaftar ulang.'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -99,7 +100,7 @@ export default function Registrations({ status = 'pending', registrations = [], 
                     <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
                       <th className="py-2 pr-3 font-medium">Karyawan</th>
                       <th className="py-2 pr-3 font-medium">NIK</th>
-                      <th className="py-2 pr-3 font-medium">Outlet</th>
+                      <th className="py-2 pr-3 font-medium">Outlet dipilih</th>
                       <th className="py-2 pr-3 font-medium">Daftar</th>
                       <th className="py-2 pr-3 font-medium">{status === 'rejected' ? 'Ditolak' : 'Verifikasi'}</th>
                       {status === 'pending' && <th className="py-2 font-medium" />}
@@ -120,7 +121,26 @@ export default function Registrations({ status = 'pending', registrations = [], 
                             {r.job_position && <div className="text-xs text-muted-foreground">{r.job_position}</div>}
                           </td>
                           <td className="py-2 pr-3 font-mono text-xs">{r.nik ?? '—'}</td>
-                          <td className="py-2 pr-3 text-xs">{r.outlets.length ? r.outlets.join(', ') : '—'}</td>
+                          <td className="py-2 pr-3 text-xs">
+                            {r.claimed_outlet ? (
+                              <>
+                                <div className="font-medium">
+                                  {r.claimed_outlet.name}
+                                  {r.claimed_outlet.is_new && (
+                                    <Badge variant="outline" className="ml-2 border-amber-500/40 text-[10px] text-amber-600 dark:text-amber-400">
+                                      outlet baru
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="text-muted-foreground">
+                                  {[r.claimed_outlet.company, r.claimed_outlet.brand].filter(Boolean).join(' · ')}
+                                </div>
+                              </>
+                            ) : '—'}
+                            <div className="mt-1 text-muted-foreground">
+                              Tercatat: {r.outlets.length ? r.outlets.join(', ') : '—'}
+                            </div>
+                          </td>
                           <td className="whitespace-nowrap py-2 pr-3 font-mono text-xs">{r.registered_at ?? '—'}</td>
                           <td className="py-2 pr-3 text-xs">
                             {status === 'rejected' ? (

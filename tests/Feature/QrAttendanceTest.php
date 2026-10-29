@@ -17,6 +17,7 @@ use App\Services\QrTokenService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -120,14 +121,14 @@ class QrAttendanceTest extends TestCase
         return $this->actingAs($this->employeeUser)->get($this->qrUrl($kiosk));
     }
 
-    private function submit(float $latOffset = 0.00045)
+    private function submit(float $latOffset = 0.00045, ?float $accuracy = 9)
     {
-        return $this->actingAs($this->employeeUser)->post('/api/attendance/qr', [
+        return $this->actingAs($this->employeeUser)->post('/api/attendance/qr', array_filter([
             'photo' => UploadedFile::fake()->image('selfie.jpg', 640, 480),
             'latitude' => self::LAT + $latOffset,
             'longitude' => self::LNG,
-            'accuracy' => 9,
-        ], ['Accept' => 'application/json']);
+            'accuracy' => $accuracy,
+        ], fn ($v) => $v !== null), ['Accept' => 'application/json']);
     }
 
     private function qrLog(string $status = 'pending_review', ?Outlet $outlet = null): AttendanceLog
@@ -315,6 +316,36 @@ class QrAttendanceTest extends TestCase
 
         $this->submit()->assertStatus(429);
         $this->assertSame(1, AttendanceLog::count());
+    }
+
+    public function test_akurasi_gps_buruk_atau_kosong_ditolak(): void
+    {
+        config(['attendance.qr_max_accuracy' => 100]);
+        $this->scanAsEmployee();
+
+        $this->submit(accuracy: 1500)->assertStatus(422)
+            ->assertJsonPath('accuracy_meters', 1500)
+            ->assertJsonPath('max_accuracy_meters', 100);
+        $this->submit(accuracy: null)->assertStatus(422);
+        $this->assertSame(0, AttendanceLog::count());
+
+        // Tepat di batas masih diterima; scan session tak terpakai oleh penolakan tadi.
+        $this->submit(accuracy: 100)->assertCreated();
+        $this->assertSame(100, AttendanceLog::sole()->accuracy_meters);
+    }
+
+    public function test_kiriman_saat_kiriman_lain_masih_diproses_ditolak_409(): void
+    {
+        $this->scanAsEmployee();
+        // Kiriman pertama (double-tap) masih memegang lock karyawan ini.
+        $lock = Cache::lock("attendance-submit:{$this->employee->id}", 15);
+        $this->assertTrue($lock->get());
+
+        $this->submit()->assertStatus(409);
+        $this->assertSame(0, AttendanceLog::count());
+
+        $lock->release();
+        $this->submit()->assertCreated();
     }
 
     public function test_fitur_dimatikan_ditolak(): void

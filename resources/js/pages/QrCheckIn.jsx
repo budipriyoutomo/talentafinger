@@ -67,9 +67,11 @@ function useCountdown(initial) {
  * menunggu persetujuan supervisor.
  */
 export default function QrCheckIn({
-  employee, scan, qr_error, blocked_reason, radius_meters, max_photo_kb, recent = [], can_manual_photo,
+  employee, scan, qr_error, blocked_reason, radius_meters, max_accuracy_meters = 100, max_photo_kb, recent = [], can_manual_photo,
 }) {
   const { position, locating, geoError, locate } = useFreshLocation()
+  // Server menolak lokasi yang akurasinya lebih buruk dari batas ini.
+  const inaccurate = !!position && Math.round(position.accuracy) > max_accuracy_meters
 
   const [photo, setPhoto] = useState(null) // Blob siap kirim
   const [preview, setPreview] = useState(null)
@@ -268,6 +270,11 @@ export default function QrCheckIn({
                   <p className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" /> Mencari lokasi…
                   </p>
+                ) : position && inaccurate ? (
+                  <p className="text-sm text-amber-600 dark:text-amber-400">
+                    Sinyal lokasi kurang akurat (±{Math.round(position.accuracy)} m, maksimal ±{max_accuracy_meters} m).
+                    Aktifkan GPS / mode akurasi tinggi, keluar ke area terbuka, lalu perbarui lokasi.
+                  </p>
                 ) : position ? (
                   <p className="text-sm text-foreground">
                     Lokasi didapat <span className="text-muted-foreground">(akurasi ±{Math.round(position.accuracy)} m)</span>
@@ -311,7 +318,7 @@ export default function QrCheckIn({
                 className="w-full gap-2"
                 size="lg"
                 onClick={submit}
-                disabled={!position || !photo || submitting || expired}
+                disabled={!position || inaccurate || !photo || submitting || expired}
               >
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 Kirim Absen

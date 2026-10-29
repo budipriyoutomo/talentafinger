@@ -8,6 +8,7 @@ use App\Models\AuditLog;
 use App\Models\Setting;
 use App\Services\QrTokenService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 
@@ -42,12 +43,19 @@ class KioskDeviceController extends Controller
     {
         $data = $request->validate(['code' => 'required|string|max:32']);
 
-        $kiosk = AttendanceKiosk::findByActivationCode($data['code']);
-        if ($kiosk === null) {
+        // Cari + aktivasi dalam satu transaksi berkunci: satu kode = satu tablet,
+        // tablet kedua yang bersamaan tak bisa menimpa token tablet pertama.
+        $result = DB::transaction(function () use ($data) {
+            $kiosk = AttendanceKiosk::findByActivationCode($data['code']);
+
+            return $kiosk ? [$kiosk, $kiosk->activate()] : null;
+        });
+
+        if ($result === null) {
             return response()->json(['message' => 'Kode salah atau kedaluwarsa.'], 422);
         }
 
-        $token = $kiosk->activate();
+        [$kiosk, $token] = $result;
         $kiosk->load('outlet');
 
         // Tanpa aktor (tablet tak login); IP & user agent tetap tercatat.

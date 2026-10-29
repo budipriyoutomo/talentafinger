@@ -137,7 +137,12 @@ class AttendanceKiosk extends Model
         return hash('sha256', strtoupper(preg_replace('/[\s-]+/', '', $code)));
     }
 
-    /** Kiosk aktif dengan kode aktivasi ini yang belum kedaluwarsa. */
+    /**
+     * Kiosk aktif dengan kode aktivasi ini yang belum kedaluwarsa. Barisnya
+     * dikunci (FOR UPDATE), jadi panggil di dalam transaksi: dua tablet yang
+     * memasukkan kode yang sama bersamaan -> yang kedua menunggu, lalu tak
+     * menemukan kode lagi (sudah dihapus activate()).
+     */
     public static function findByActivationCode(?string $code): ?self
     {
         if ($code === null || trim($code) === '') {
@@ -147,6 +152,7 @@ class AttendanceKiosk extends Model
         return static::where('activation_code_hash', self::hashActivationCode($code))
             ->where('activation_expires_at', '>', now())
             ->where('is_active', true)
+            ->lockForUpdate()
             ->first();
     }
 

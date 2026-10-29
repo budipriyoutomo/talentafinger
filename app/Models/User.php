@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Prunable;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
-#[Fillable(['name', 'email', 'password', 'must_change_password', 'role', 'is_active', 'last_login_at', 'last_login_ip', 'employee_id', 'registration_status', 'registered_at'])]
+#[Fillable(['name', 'email', 'password', 'must_change_password', 'role', 'is_active', 'last_login_at', 'last_login_ip', 'employee_id', 'registration_status', 'registered_at', 'registration_outlet_id'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -247,6 +247,37 @@ class User extends Authenticatable
     public function reviewer()
     {
         return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
+    /** Outlet yang dipilih pendaftar di /register. */
+    public function registrationOutlet()
+    {
+        return $this->belongsTo(Outlet::class, 'registration_outlet_id');
+    }
+
+    /**
+     * Pendaftaran disetujui -> karyawannya ditautkan ke outlet pilihannya
+     * (tautan outlet lain tak disentuh), supaya scope & absen QR outlet itu
+     * langsung berlaku.
+     */
+    public function linkRegistrationOutlet(): void
+    {
+        if ($this->registration_outlet_id && $this->employee) {
+            $this->employee->outlets()->syncWithoutDetaching([$this->registration_outlet_id]);
+        }
+    }
+
+    /**
+     * Pendaftaran yang boleh dilihat & diputus penyetuju ini: karyawannya punya
+     * outlet dalam scope-nya, ATAU outlet pilihan pendaftar ada dalam scope-nya.
+     */
+    public function scopeRegistrationsVisibleTo($query, User $reviewer)
+    {
+        $outletIds = $reviewer->scopedOutletIds();
+
+        return $query->where(fn ($q) => $q
+            ->whereIn('employee_id', Employee::visibleTo($reviewer)->select('id'))
+            ->when($outletIds !== null, fn ($w) => $w->orWhereIn('registration_outlet_id', $outletIds)));
     }
 
     /** Akun hasil registrasi mandiri yang belum selesai (belum verifikasi / belum disetujui / ditolak). */

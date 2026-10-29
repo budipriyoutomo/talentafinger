@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\RegistrationController;
 use App\Models\Brand;
 use App\Models\Company;
 use App\Models\Employee;
@@ -16,12 +17,16 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
-/** Registrasi mandiri akun karyawan: /register, verifikasi email, persetujuan. */
+/** Registrasi mandiri akun karyawan: /register, buat password via link email, persetujuan. */
 class RegistrationTest extends TestCase
 {
     use RefreshDatabase;
 
     private const PASSWORD = 'Rahasia123';
+
+    private Company $company;
+
+    private Brand $brand;
 
     private Outlet $outlet;
 
@@ -34,9 +39,9 @@ class RegistrationTest extends TestCase
         Notification::fake();
         config(['auth.registration_enabled' => true, 'auth.registration_require_approval' => true]);
 
-        $company = Company::create(['name' => 'PT Uji']);
-        $brand = Brand::create(['company_id' => $company->id, 'name' => 'Brand Uji']);
-        $this->outlet = Outlet::create(['brand_id' => $brand->id, 'name' => 'Outlet Uji']);
+        $this->company = Company::create(['name' => 'PT Uji']);
+        $this->brand = Brand::create(['company_id' => $this->company->id, 'name' => 'Brand Uji']);
+        $this->outlet = Outlet::create(['brand_id' => $this->brand->id, 'name' => 'Outlet Uji']);
         $this->employee = $this->employee('Siti', 'K001', 'Siti@Contoh.com');
     }
 
@@ -53,8 +58,9 @@ class RegistrationTest extends TestCase
         return $this->from('/register')->post('/register', [
             'nik' => 'K001',
             'email' => 'siti@contoh.com',
-            'password' => self::PASSWORD,
-            'password_confirmation' => self::PASSWORD,
+            'company_id' => $this->company->id,
+            'brand_id' => $this->brand->id,
+            'outlet_id' => $this->outlet->id,
             ...$overrides,
         ]);
     }
@@ -69,6 +75,7 @@ class RegistrationTest extends TestCase
         return User::where('employee_id', $this->employee->id)->sole();
     }
 
+    /** URL dari email terakhir untuk user ini. */
     private function verificationUrl(User $user): string
     {
         $url = null;
@@ -79,6 +86,23 @@ class RegistrationTest extends TestCase
         });
 
         return $url;
+    }
+
+    /** Buka link email lalu kirim form buat password (POST ke `action` dari halaman). */
+    private function completeRegistration(User $user, ?string $url = null)
+    {
+        $action = null;
+        $this->get($url ?? $this->verificationUrl($user))
+            ->assertInertia(function ($page) use (&$action) {
+                $page->component('RegisterSetPassword')
+                    ->where('action', function ($value) use (&$action) {
+                        $action = $value;
+
+                        return filled($value);
+                    });
+            });
+
+        return $this->post($action, ['password' => self::PASSWORD, 'password_confirmation' => self::PASSWORD]);
     }
 
     private function reviewer(?Outlet $outlet = null): User
@@ -100,18 +124,50 @@ class RegistrationTest extends TestCase
         $this->assertSame(0, User::count());
     }
 
-    public function test_nik_dan_email_cocok_membuat_akun_belum_verifikasi_dan_mengirim_link(): void
+    public function test_halaman_register_menyediakan_pilihan_company_brand_outlet_aktif(): void
     {
-        $this->register(['email' => ' SITI@contoh.com '])->assertRedirect('/register')->assertSessionHas('success');
+        Outlet::create(['brand_id' => $this->brand->id, 'name' => 'Outlet Tutup', 'is_active' => false]);
+        Brand::create(['company_id' => $this->company->id, 'name' => 'Brand Kosong']);
+
+        $this->get('/register')->assertInertia(fn ($page) => $page->component('Register')
+            ->has('companies', 1)
+            ->where('companies.0.id', $this->company->id)
+            ->has('companies.0.brands', 1)
+            ->has('companies.0.brands.0.outlets', 1)
+            ->where('companies.0.brands.0.outlets.0.id', $this->outlet->id));
+    }
+
+    public function test_nik_dan_email_cocok_membuat_akun_belum_verifikasi_tanpa_password_dari_pendaftar(): void
+    {
+        $this->register(['email' => ' SITI@contoh.com ', 'password' => self::PASSWORD])
+            ->assertRedirect('/register')->assertSessionHas('success');
 
         $user = $this->registeredUser();
         $this->assertSame(User::REG_UNVERIFIED, $user->registration_status);
         $this->assertFalse($user->is_active);
         $this->assertSame(Role::EMPLOYEE, $user->role);
         $this->assertSame('siti@contoh.com', $user->email);
+        $this->assertSame($this->outlet->id, $user->registration_outlet_id);
         $this->assertFalse($user->must_change_password);
-        $this->assertTrue(Hash::check(self::PASSWORD, $user->password));
+        // Password kiriman pendaftar diabaikan; akun belum bisa dipakai login.
+        $this->assertFalse(Hash::check(self::PASSWORD, $user->password));
+        $this->login()->assertSessionHasErrors(['email' => 'Email atau password salah.']);
         Notification::assertSentTo($user, VerifyRegistration::class);
+    }
+
+    public function test_outlet_wajib_dan_harus_sesuai_rantai_company_brand(): void
+    {
+        $this->register(['company_id' => '', 'brand_id' => '', 'outlet_id' => ''])
+            ->assertSessionHasErrors(['company_id', 'brand_id', 'outlet_id']);
+
+        $otherCompany = Company::create(['name' => 'PT Lain']);
+        $this->register(['company_id' => $otherCompany->id])->assertSessionHasErrors('outlet_id');
+
+        $closed = Outlet::create(['brand_id' => $this->brand->id, 'name' => 'Tutup', 'is_active' => false]);
+        $this->register(['outlet_id' => $closed->id])->assertSessionHasErrors('outlet_id');
+
+        $this->assertSame(0, User::count());
+        Notification::assertNothingSent();
     }
 
     public function test_data_tak_cocok_atau_sudah_punya_akun_dibalas_pesan_yang_sama(): void
@@ -130,6 +186,22 @@ class RegistrationTest extends TestCase
         Notification::assertSentTimes(VerifyRegistration::class, 1);
     }
 
+    public function test_rate_limit_per_nik_dihitung_per_ip(): void
+    {
+        // Penyerang di IP lain menghabiskan jatah percobaan NIK K001.
+        foreach (range(1, 3) as $_) {
+            $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.66'])
+                ->register(['email' => 'tebak@contoh.com'])->assertSessionHas('success');
+        }
+        $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.66'])
+            ->register(['email' => 'tebak@contoh.com'])->assertSessionHasErrors('nik');
+
+        // Pemilik NIK dari perangkatnya sendiri tetap bisa mendaftar.
+        $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.7'])
+            ->register()->assertSessionHasNoErrors()->assertSessionHas('success');
+        $this->assertSame(User::REG_UNVERIFIED, $this->registeredUser()->registration_status);
+    }
+
     public function test_karyawan_nonaktif_tak_bisa_mendaftar(): void
     {
         $this->employee->update(['is_active' => false]);
@@ -139,16 +211,34 @@ class RegistrationTest extends TestCase
         $this->assertSame(0, User::count());
     }
 
-    public function test_verifikasi_lalu_disetujui_pengelola_outlet_baru_bisa_login(): void
+    public function test_membuka_link_email_tidak_mengubah_apa_pun(): void
     {
         $this->register();
         $user = $this->registeredUser();
 
-        $this->get($this->verificationUrl($user))->assertRedirect('/login')->assertSessionHas('success');
+        // Prefetch email scanner = GET berulang.
+        $this->get($this->verificationUrl($user))->assertOk()
+            ->assertInertia(fn ($page) => $page->component('RegisterSetPassword')
+                ->where('email', 'siti@contoh.com')
+                ->where('name', 'Siti'));
+        $this->get($this->verificationUrl($user))->assertOk();
+
+        $user->refresh();
+        $this->assertSame(User::REG_UNVERIFIED, $user->registration_status);
+        $this->assertNull($user->email_verified_at);
+    }
+
+    public function test_buat_password_lalu_disetujui_pengelola_outlet_baru_bisa_login(): void
+    {
+        $this->register();
+        $user = $this->registeredUser();
+
+        $this->completeRegistration($user)->assertRedirect('/login')->assertSessionHas('success');
         $user->refresh();
         $this->assertSame(User::REG_PENDING, $user->registration_status);
         $this->assertNotNull($user->email_verified_at);
         $this->assertFalse($user->is_active);
+        $this->assertTrue(Hash::check(self::PASSWORD, $user->password));
 
         $this->login()->assertSessionHasErrors(['email' => 'Pendaftaran Anda menunggu persetujuan pengelola outlet. Pemberitahuan dikirim lewat email.']);
         $this->assertGuest();
@@ -168,17 +258,19 @@ class RegistrationTest extends TestCase
         $this->assertAuthenticatedAs($user);
     }
 
-    public function test_tanpa_wajib_persetujuan_akun_aktif_setelah_verifikasi(): void
+    public function test_tanpa_wajib_persetujuan_akun_aktif_setelah_buat_password(): void
     {
         config(['auth.registration_require_approval' => false]);
-        $this->register();
+        $newOutlet = Outlet::create(['brand_id' => $this->brand->id, 'name' => 'Outlet Baru']);
+        $this->register(['outlet_id' => $newOutlet->id]);
         $user = $this->registeredUser();
 
-        $this->get($this->verificationUrl($user));
+        $this->completeRegistration($user);
 
         $user->refresh();
         $this->assertNull($user->registration_status);
         $this->assertTrue($user->is_active);
+        $this->assertTrue($this->employee->outlets()->whereKey($newOutlet->id)->exists());
         $this->login()->assertRedirect();
         $this->assertAuthenticatedAs($user);
     }
@@ -187,33 +279,74 @@ class RegistrationTest extends TestCase
     {
         $this->register();
         $user = $this->registeredUser();
+        $url = $this->verificationUrl($user);
+        $form = ['password' => self::PASSWORD, 'password_confirmation' => self::PASSWORD];
 
-        $this->get($this->verificationUrl($user).'x')->assertRedirect('/login')->assertSessionHas('error');
-        $this->get("/register/verify/{$user->id}/".sha1($user->email))->assertRedirect('/login')->assertSessionHas('error');
+        $this->get($url.'x')->assertRedirect('/login')->assertSessionHas('error');
+        $this->post($url.'x', $form)->assertRedirect('/login')->assertSessionHas('error');
+        $this->post("/register/verify/{$user->id}/".sha1($user->email), $form)->assertRedirect('/login')->assertSessionHas('error');
 
-        $this->assertSame(User::REG_UNVERIFIED, $user->fresh()->registration_status);
+        $this->travel(RegistrationController::LINK_TTL_MINUTES + 1)->minutes();
+        $this->post($url, $form)->assertRedirect('/login')->assertSessionHas('error');
+
+        $user->refresh();
+        $this->assertSame(User::REG_UNVERIFIED, $user->registration_status);
+        $this->assertFalse(Hash::check(self::PASSWORD, $user->password));
     }
 
-    public function test_login_akun_belum_verifikasi_mengirim_ulang_link_maks_sekali_per_menit(): void
+    public function test_link_yang_sudah_dipakai_tak_bisa_mengganti_password(): void
     {
         $this->register();
         $user = $this->registeredUser();
+        $url = $this->verificationUrl($user);
 
-        // Baru saja dikirim saat daftar -> belum dikirim ulang.
-        $this->login()->assertSessionHasErrors('email');
-        Notification::assertSentTimes(VerifyRegistration::class, 1);
+        $this->completeRegistration($user, $url);
+        $this->post($url, ['password' => 'Lainnya123', 'password_confirmation' => 'Lainnya123'])
+            ->assertRedirect('/login');
 
-        $this->travel(61)->seconds();
-        $this->login()->assertSessionHasErrors(['email' => 'Email belum diverifikasi. Link verifikasi baru telah dikirim ke email Anda.']);
-        Notification::assertSentTimes(VerifyRegistration::class, 2);
-        $this->assertGuest();
+        $this->assertTrue(Hash::check(self::PASSWORD, $user->fresh()->password));
+    }
+
+    public function test_daftar_ulang_saat_belum_verifikasi_membatalkan_link_lama(): void
+    {
+        $this->register();
+        $old = $this->registeredUser();
+        $oldUrl = $this->verificationUrl($old);
+
+        $this->travel(11)->minutes(); // lewati rate limit per NIK
+        $this->register();
+        $new = $this->registeredUser();
+        $this->assertNotSame($old->id, $new->id);
+
+        $this->get($oldUrl)->assertRedirect('/login')->assertSessionHas('error');
+        $this->completeRegistration($new)->assertRedirect('/login')->assertSessionHas('success');
+        $this->assertSame(User::REG_PENDING, $new->fresh()->registration_status);
+    }
+
+    public function test_karyawan_tanpa_outlet_masuk_antrian_outlet_pilihannya_dan_ditautkan_saat_disetujui(): void
+    {
+        $this->employee->outlets()->detach();
+        $this->register();
+        $user = $this->registeredUser();
+        $this->completeRegistration($user);
+
+        $reviewer = $this->reviewer();
+        $this->actingAs($reviewer)->get('/registrations')
+            ->assertInertia(fn ($page) => $page->component('Registrations')
+                ->has('registrations', 1)
+                ->where('registrations.0.claimed_outlet.name', 'Outlet Uji')
+                ->where('registrations.0.claimed_outlet.is_new', true));
+
+        $this->actingAs($reviewer)->postJson("/api/registrations/{$user->id}/approve")->assertOk();
+
+        $this->assertTrue($this->employee->outlets()->whereKey($this->outlet->id)->exists());
     }
 
     public function test_penyetuju_di_luar_scope_tidak_melihat_dan_tidak_bisa_memutus(): void
     {
         $this->register();
         $user = $this->registeredUser();
-        $this->get($this->verificationUrl($user));
+        $this->completeRegistration($user);
 
         $other = Outlet::create(['brand_id' => $this->outlet->brand_id, 'name' => 'Outlet Lain']);
         $reviewer = $this->reviewer($other);
@@ -229,11 +362,11 @@ class RegistrationTest extends TestCase
         $this->actingAs($operator)->get('/registrations')->assertForbidden();
     }
 
-    public function test_ditolak_menampilkan_alasan_saat_login_dan_boleh_mendaftar_ulang(): void
+    public function test_ditolak_menampilkan_alasan_saat_login_dan_baru_boleh_daftar_ulang_setelah_masa_simpan(): void
     {
         $this->register();
         $user = $this->registeredUser();
-        $this->get($this->verificationUrl($user));
+        $this->completeRegistration($user);
 
         $this->actingAs($this->reviewer())
             ->postJson("/api/registrations/{$user->id}/reject", ['reason' => 'Bukan staf outlet ini'])
@@ -244,7 +377,14 @@ class RegistrationTest extends TestCase
         auth()->logout();
         $this->login()->assertSessionHasErrors(['email' => 'Pendaftaran Anda ditolak: Bukan staf outlet ini. Hubungi HR / atasan Anda.']);
 
-        // Daftar ulang mengganti pendaftaran yang ditolak.
+        // Selama masa simpan: daftar ulang diam-diam diabaikan (respon tetap generik).
+        $this->travel(11)->minutes(); // lewati rate limit per NIK
+        $this->register()->assertSessionHas('success');
+        $this->assertSame($user->id, $this->registeredUser()->id);
+        Notification::assertSentTimes(VerifyRegistration::class, 1);
+
+        // Setelah masa simpan habis, daftar ulang mengganti pendaftaran yang ditolak.
+        $this->travel(User::REJECTED_RETENTION_DAYS + 1)->days();
         $this->register();
         $again = $this->registeredUser();
         $this->assertNotSame($user->id, $again->id);
@@ -253,7 +393,8 @@ class RegistrationTest extends TestCase
 
     public function test_admin_mengaktifkan_akun_pendaftar_dari_form_user_berarti_menyetujui(): void
     {
-        $this->register();
+        $newOutlet = Outlet::create(['brand_id' => $this->brand->id, 'name' => 'Outlet Baru']);
+        $this->register(['outlet_id' => $newOutlet->id]);
         $user = $this->registeredUser();
         $admin = User::create(['name' => 'Admin', 'email' => 'admin@adms.local', 'password' => 'x', 'role' => Role::ADMIN]);
 
@@ -268,6 +409,7 @@ class RegistrationTest extends TestCase
         $user->refresh();
         $this->assertNull($user->registration_status);
         $this->assertTrue($user->is_active);
+        $this->assertTrue($this->employee->outlets()->whereKey($newOutlet->id)->exists());
     }
 
     public function test_prune_membuang_pendaftaran_basi_saja(): void

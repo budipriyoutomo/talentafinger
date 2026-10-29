@@ -47,10 +47,13 @@ Route::middleware('guest')->group(function () {
     Route::post('/reset-password', [PasswordResetController::class, 'update'])->middleware('throttle:10,1');
 });
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth')->name('logout');
-// Link dari email verifikasi (signed). Di luar guest: link boleh dibuka di
-// browser yang kebetulan sedang login akun lain.
+// Link dari email registrasi (signed). GET = form buat password (tanpa ubah
+// state, aman dari prefetch email scanner), POST = simpan password + verifikasi.
+// Di luar guest: link boleh dibuka di browser yang sedang login akun lain.
 Route::get('/register/verify/{id}/{hash}', [RegistrationController::class, 'verify'])
     ->middleware('throttle:10,1')->name('register.verify');
+Route::post('/register/verify/{id}/{hash}', [RegistrationController::class, 'complete'])
+    ->middleware('throttle:10,1')->name('register.complete');
 
 // Dashboard UI routes — wajib login.
 Route::middleware('auth')->group(function () {

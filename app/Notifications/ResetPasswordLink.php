@@ -16,7 +16,11 @@ class ResetPasswordLink extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(public string $url, public int $expiresInMinutes) {}
+    public function __construct(public string $url, public int $expiresInMinutes)
+    {
+        // Antrean sendiri: tak tertahan di belakang job zk_sync / pengiriman absensi.
+        $this->onQueue('mail');
+    }
 
     public function via(object $notifiable): array
     {

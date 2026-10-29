@@ -209,6 +209,15 @@ class SettingSeeder extends Seeder
                 'default' => '100',
             ],
             [
+                'key' => 'attendance.qr_max_accuracy',
+                'group' => 'attendance',
+                'type' => 'number',
+                'label' => 'Akurasi GPS Maksimal Absen QR (meter)',
+                'description' => 'Lokasi HP yang akurasinya lebih buruk dari ini ditolak (karyawan diminta ambil lokasi ulang), '
+                    . 'karena posisi ±1 km bisa kebetulan masuk radius. Minimal 10, disarankan 100.',
+                'default' => '100',
+            ],
+            [
                 'key' => 'attendance.qr_rotate_seconds',
                 'group' => 'attendance',
                 'type' => 'number',
@@ -233,8 +242,8 @@ class SettingSeeder extends Seeder
                 'group' => 'auth',
                 'type' => 'boolean',
                 'label' => 'Aktifkan Registrasi Karyawan',
-                'description' => 'Karyawan bisa membuat akun sendiri di /register dengan NIK + email yang tercatat di Talenta, '
-                    . 'lalu memverifikasi lewat link di email. Butuh SMTP (MAIL_*) di .env.',
+                'description' => 'Karyawan bisa membuat akun sendiri di /register dengan NIK + email yang tercatat di Talenta '
+                    . 'dan outlet tempat kerjanya, lalu membuat password lewat link di email. Butuh SMTP (MAIL_*) di .env.',
                 'default' => '0',
             ],
             [

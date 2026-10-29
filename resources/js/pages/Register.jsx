@@ -2,20 +2,38 @@ import React, { useState } from 'react'
 import { Head, Link, useForm, usePage } from '@inertiajs/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import ThemeToggle from '@/components/ThemeToggle'
 import {
-  UserPlus, Loader2, Mail, Lock, IdCard, ScanFace, ArrowLeft, MailCheck, ShieldCheck, LogIn, RotateCcw,
+  UserPlus, Loader2, Mail, IdCard, ScanFace, ArrowLeft, MailCheck, ShieldCheck, LogIn, RotateCcw,
+  Building2, Tag, Store,
 } from 'lucide-react'
 
 // Langkah pendaftaran; dipakai panel brand (desktop) dan panel sukses.
 // Langkah persetujuan hanya bila setting auth.registration_require_approval aktif.
 const stepsFor = (requiresApproval) => [
-  { icon: IdCard, title: 'Isi NIK & email', text: 'Gunakan NIK dan email yang tercatat di Talenta.' },
-  { icon: MailCheck, title: 'Verifikasi email', text: 'Klik link yang kami kirim. Berlaku 60 menit.' },
+  { icon: IdCard, title: 'Isi data diri', text: 'NIK & email yang tercatat di Talenta, plus outlet tempat Anda bekerja.' },
+  { icon: MailCheck, title: 'Buat password', text: 'Klik link di email, lalu buat password Anda. Link berlaku 60 menit.' },
   requiresApproval
     ? { icon: ShieldCheck, title: 'Tunggu persetujuan', text: 'Pengelola outlet menyetujui, lalu Anda bisa login.' }
-    : { icon: LogIn, title: 'Login', text: 'Setelah verifikasi, langsung login dengan email & password Anda.' },
+    : { icon: LogIn, title: 'Login', text: 'Setelah password dibuat, langsung login dengan email & password Anda.' },
 ]
+
+function SelectField({ id, label, icon: Icon, error, placeholder, options, ...props }) {
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="text-sm font-medium">{label}</label>
+      <div className="relative">
+        <Icon className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Select id={id} aria-invalid={!!error} className="h-11 pl-9 text-base sm:text-sm" {...props}>
+          <option value="">{placeholder}</option>
+          {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </Select>
+      </div>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  )
+}
 
 function Field({ id, label, icon: Icon, error, hint, className = '', ...props }) {
   return (
@@ -71,8 +89,8 @@ function SuccessPanel({ message, email, steps, onAgain }) {
       </ol>
 
       <p className="text-xs text-muted-foreground">
-        Tidak menerima email dalam beberapa menit? Periksa folder spam, atau login dengan email & password tadi untuk
-        mengirim ulang link. Bila tetap tidak ada, pastikan NIK & email sesuai data di Talenta.
+        Tidak menerima email dalam beberapa menit? Periksa folder spam, atau daftar ulang dengan NIK & email yang sama
+        untuk menerima link baru. Bila tetap tidak ada, pastikan NIK & email sesuai data di Talenta.
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -87,7 +105,7 @@ function SuccessPanel({ message, email, steps, onAgain }) {
   )
 }
 
-export default function Register({ requiresApproval = true }) {
+export default function Register({ requiresApproval = true, companies = [] }) {
   const { flash } = usePage().props
   const STEPS = stepsFor(requiresApproval)
   const [submittedEmail, setSubmittedEmail] = useState('')
@@ -95,9 +113,16 @@ export default function Register({ requiresApproval = true }) {
   const { data, setData, post, processing, errors, reset } = useForm({
     nik: '',
     email: '',
-    password: '',
-    password_confirmation: '',
+    company_id: '',
+    brand_id: '',
+    outlet_id: '',
   })
+
+  // Pilihan bertingkat: brand mengikuti company, outlet mengikuti brand.
+  const brands = companies.find((c) => c.id === data.company_id)?.brands ?? []
+  const outlets = brands.find((b) => b.id === data.brand_id)?.outlets ?? []
+  const pickCompany = (id) => setData((d) => ({ ...d, company_id: id, brand_id: '', outlet_id: '' }))
+  const pickBrand = (id) => setData((d) => ({ ...d, brand_id: id, outlet_id: '' }))
 
   const submit = (e) => {
     e.preventDefault()
@@ -178,7 +203,7 @@ export default function Register({ requiresApproval = true }) {
                 </span>
                 <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Daftar akun karyawan</h1>
                 <p className="text-sm text-muted-foreground sm:text-base">
-                  Gunakan NIK dan email yang tercatat di Talenta. Link verifikasi akan dikirim ke email tersebut.
+                  Gunakan NIK dan email yang tercatat di Talenta. Link untuk membuat password akan dikirim ke email tersebut.
                 </p>
               </div>
 
@@ -220,28 +245,42 @@ export default function Register({ requiresApproval = true }) {
                 </div>
                 <p className="-mt-2 text-xs text-muted-foreground">Email yang terdaftar di Talenta, nanti dipakai untuk login.</p>
                 <div className="grid gap-5 sm:grid-cols-2">
-                  <Field
-                    id="password"
-                    label="Password"
-                    icon={Lock}
-                    type="password"
-                    autoComplete="new-password"
-                    value={data.password}
-                    onChange={(e) => setData('password', e.target.value)}
-                    error={errors.password}
+                  <SelectField
+                    id="company_id"
+                    label="Company"
+                    icon={Building2}
+                    placeholder="Pilih company"
+                    options={companies}
+                    value={data.company_id}
+                    onChange={(e) => pickCompany(e.target.value)}
+                    error={errors.company_id}
                   />
-                  <Field
-                    id="password_confirmation"
-                    label="Ulangi Password"
-                    icon={Lock}
-                    type="password"
-                    autoComplete="new-password"
-                    value={data.password_confirmation}
-                    onChange={(e) => setData('password_confirmation', e.target.value)}
-                    error={errors.password_confirmation}
+                  <SelectField
+                    id="brand_id"
+                    label="Brand"
+                    icon={Tag}
+                    placeholder={data.company_id ? 'Pilih brand' : 'Pilih company dulu'}
+                    options={brands}
+                    disabled={!data.company_id}
+                    value={data.brand_id}
+                    onChange={(e) => pickBrand(e.target.value)}
+                    error={errors.brand_id}
                   />
                 </div>
-                <p className="-mt-2 text-xs text-muted-foreground">Minimal 8 karakter, berisi huruf dan angka.</p>
+                <SelectField
+                  id="outlet_id"
+                  label="Outlet"
+                  icon={Store}
+                  placeholder={data.brand_id ? 'Pilih outlet' : 'Pilih brand dulu'}
+                  options={outlets}
+                  disabled={!data.brand_id}
+                  value={data.outlet_id}
+                  onChange={(e) => setData('outlet_id', e.target.value)}
+                  error={errors.outlet_id}
+                />
+                <p className="-mt-2 text-xs text-muted-foreground">
+                  Outlet tempat Anda bekerja. Pengelola outlet ini yang akan menyetujui pendaftaran Anda.
+                </p>
                 <Button type="submit" size="lg" disabled={processing} className="h-11 w-full gap-2">
                   {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
                   Daftar

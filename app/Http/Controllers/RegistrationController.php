@@ -3,26 +3,32 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
+use App\Models\Company;
 use App\Models\Employee;
+use App\Models\Outlet;
 use App\Models\Role;
 use App\Models\Setting;
 use App\Models\User;
 use App\Notifications\VerifyRegistration;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 /**
  * Registrasi mandiri akun KARYAWAN (bukan pengguna panel): NIK + email harus
- * cocok dengan data karyawan aktif (email = salinan Talenta), lalu pemilik
- * email memverifikasi lewat link. Setelah itu akun aktif, atau menunggu
- * persetujuan pengelola outlet (setting auth.registration_require_approval,
+ * cocok dengan data karyawan aktif (email = salinan Talenta), plus outlet
+ * tempat kerja yang dipilih pendaftar. Link dikirim ke email itu; di sanalah
+ * pemilik email membuat password, sehingga orang lain yang tahu NIK + email
+ * tak bisa menentukan password akun tersebut. Setelah itu akun aktif, atau
+ * menunggu persetujuan pengelola outlet (setting auth.registration_require_approval,
  * lihat RegistrationReviewController).
  *
  * Respon /register SELALU sama apa pun hasil pencocokannya, supaya halaman
@@ -37,10 +43,7 @@ class RegistrationController extends Controller
 
     private const NIK_DECAY_SECONDS = 600;
 
-    /** Jeda minimal antar email verifikasi untuk satu akun. */
-    public const RESEND_DECAY_SECONDS = 60;
-
-    private const GENERIC_MESSAGE = 'Jika NIK dan email cocok dengan data karyawan, link verifikasi telah dikirim ke email tersebut. '
+    private const GENERIC_MESSAGE = 'Jika NIK dan email cocok dengan data karyawan, link untuk membuat password telah dikirim ke email tersebut. '
         .'Cek kotak masuk / folder spam. Link berlaku '.self::LINK_TTL_MINUTES.' menit.';
 
     public static function enabled(): bool
@@ -54,7 +57,35 @@ class RegistrationController extends Controller
 
         return Inertia::render('Register', [
             'requiresApproval' => (bool) Setting::value('auth.registration_require_approval', true),
+            'companies' => $this->orgOptions(),
         ]);
+    }
+
+    /**
+     * Pilihan Company -> Brand -> Outlet (aktif saja). Hanya cabang yang
+     * berujung outlet yang ditampilkan, supaya pilihan tak buntu.
+     */
+    private function orgOptions(): array
+    {
+        return Company::where('is_active', true)
+            ->with(['brands' => fn ($q) => $q->where('is_active', true)->orderBy('name')
+                ->with(['outlets' => fn ($o) => $o->where('is_active', true)->orderBy('name')])])
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Company $c) => [
+                'id' => $c->id,
+                'name' => $c->name,
+                'brands' => $c->brands
+                    ->filter(fn ($b) => $b->outlets->isNotEmpty())
+                    ->map(fn ($b) => [
+                        'id' => $b->id,
+                        'name' => $b->name,
+                        'outlets' => $b->outlets->map->only(['id', 'name'])->values(),
+                    ])->values(),
+            ])
+            ->filter(fn ($c) => $c['brands']->isNotEmpty())
+            ->values()
+            ->all();
     }
 
     public function store(Request $request)
@@ -64,13 +95,37 @@ class RegistrationController extends Controller
         $data = $request->validate([
             'nik' => 'required|string|max:100',
             'email' => 'required|email|max:150',
-            'password' => ['required', 'string', 'confirmed', Password::defaults()],
+            'company_id' => 'required|uuid',
+            'brand_id' => 'required|uuid',
+            'outlet_id' => 'required|uuid',
+        ], [], [
+            'company_id' => 'company',
+            'brand_id' => 'brand',
+            'outlet_id' => 'outlet',
         ]);
+
+        // Rantai company -> brand -> outlet harus utuh & aktif. Ini data
+        // organisasi yang memang ditampilkan di form, jadi boleh ditolak
+        // terang-terangan (tak membocorkan apa pun soal karyawan).
+        $outlet = Outlet::whereKey($data['outlet_id'])
+            ->where('is_active', true)
+            ->where('brand_id', $data['brand_id'])
+            ->whereHas('brand', fn ($q) => $q->where('is_active', true)
+                ->where('company_id', $data['company_id'])
+                ->whereHas('company', fn ($c) => $c->where('is_active', true)))
+            ->first();
+
+        if (! $outlet) {
+            throw ValidationException::withMessages(['outlet_id' => 'Pilih outlet yang valid.']);
+        }
 
         $nik = trim($data['nik']);
         $email = mb_strtolower(trim($data['email']));
 
-        $nikKey = 'register:'.mb_strtolower($nik);
+        // Kunci NIK + IP: orang iseng yang asal mencoba NIK rekan kerja tak bisa
+        // memblokir pendaftaran pemilik NIK dari perangkatnya sendiri. Batas
+        // global per IP tetap dari throttle di route.
+        $nikKey = 'register:'.mb_strtolower($nik).'|'.$request->ip();
         if (RateLimiter::tooManyAttempts($nikKey, self::MAX_ATTEMPTS_PER_NIK)) {
             throw ValidationException::withMessages([
                 'nik' => 'Terlalu banyak percobaan untuk NIK ini. Coba lagi dalam '
@@ -79,10 +134,6 @@ class RegistrationController extends Controller
         }
         RateLimiter::hit($nikKey, self::NIK_DECAY_SECONDS);
 
-        // Hash selalu dihitung (cocok atau tidak) supaya lama respon tak
-        // membocorkan hasil pencocokan.
-        $passwordHash = Hash::make($data['password']);
-
         $employee = Employee::where('is_active', true)
             ->whereRaw('TRIM(employee_code) = ?', [$nik])
             ->whereRaw('LOWER(TRIM(email)) = ?', [$email])
@@ -90,7 +141,7 @@ class RegistrationController extends Controller
             ->first();
 
         if ($employee && $this->claimable($employee, $email)) {
-            $this->register($employee, $email, $passwordHash, $nik);
+            $this->register($employee, $email, $nik, $outlet);
         }
 
         return back()->with('success', self::GENERIC_MESSAGE);
@@ -98,8 +149,10 @@ class RegistrationController extends Controller
 
     /**
      * Karyawan ini boleh didaftarkan? Belum punya akun (pendaftaran lama yang
-     * belum diverifikasi / ditolak boleh diganti), dan emailnya tak dipakai
-     * akun lain.
+     * belum diverifikasi boleh diganti), dan emailnya tak dipakai akun lain.
+     * Pendaftaran yang DITOLAK baru boleh diganti setelah masa simpannya habis
+     * (User::REJECTED_RETENTION_DAYS, lalu dibuang model:prune), supaya orang
+     * yang sama tak terus mengisi antrian penyetuju; sebelum itu hubungi HR.
      */
     private function claimable(Employee $employee, string $email): bool
     {
@@ -109,15 +162,20 @@ class RegistrationController extends Controller
             return false;
         }
 
+        if ($existing?->registration_status === User::REG_REJECTED
+            && $existing->reviewed_at?->gt(now()->subDays(User::REJECTED_RETENTION_DAYS))) {
+            return false;
+        }
+
         $emailOwner = User::whereRaw('LOWER(email) = ?', [$email])->first();
 
         return ! $emailOwner || ($existing && $emailOwner->is($existing));
     }
 
-    private function register(Employee $employee, string $email, string $passwordHash, string $nik): void
+    private function register(Employee $employee, string $email, string $nik, Outlet $outlet): void
     {
         try {
-            $user = DB::transaction(function () use ($employee, $email, $passwordHash) {
+            $user = DB::transaction(function () use ($employee, $email, $outlet) {
                 User::where('employee_id', $employee->id)
                     ->whereIn('registration_status', [User::REG_UNVERIFIED, User::REG_REJECTED])
                     ->delete();
@@ -125,13 +183,16 @@ class RegistrationController extends Controller
                 return User::create([
                     'name' => $employee->name,
                     'email' => $email,
-                    'password' => $passwordHash,
+                    // Password acak yang tak pernah diberitahukan ke siapa pun:
+                    // akun baru bisa dipakai setelah pemilik email membuat password.
+                    'password' => Hash::make(Str::random(64)),
                     'must_change_password' => false,
                     'role' => Role::EMPLOYEE,
                     'is_active' => false,
                     'employee_id' => $employee->id,
                     'registration_status' => User::REG_UNVERIFIED,
                     'registered_at' => now(),
+                    'registration_outlet_id' => $outlet->id,
                 ]);
             });
         } catch (UniqueConstraintViolationException) {
@@ -140,16 +201,14 @@ class RegistrationController extends Controller
             return;
         }
 
-        AuditLog::record('auth.registered', $user, ['nik' => $nik, 'email' => $email], actor: $user);
+        AuditLog::record('auth.registered', $user, ['nik' => $nik, 'email' => $email, 'outlet' => $outlet->name], actor: $user);
 
         static::sendVerificationLink($user);
     }
 
-    /** Kirim link verifikasi (dipakai juga AuthController saat akun belum verifikasi login). */
+    /** Kirim link buat password + verifikasi ke email pendaftar. */
     public static function sendVerificationLink(User $user): void
     {
-        RateLimiter::hit('register-resend:'.$user->id, self::RESEND_DECAY_SECONDS);
-
         $url = URL::temporarySignedRoute(
             'register.verify',
             now()->addMinutes(self::LINK_TTL_MINUTES),
@@ -160,12 +219,75 @@ class RegistrationController extends Controller
     }
 
     /**
-     * Link dari email. Tak memakai middleware `signed` supaya link kedaluwarsa
-     * berujung pesan yang jelas di halaman login, bukan halaman 403.
+     * GET link dari email: hanya menampilkan form buat password, TANPA
+     * mengubah apa pun, supaya prefetch email scanner (Safe Links, antivirus)
+     * tak memverifikasi akun. Tak memakai middleware `signed` supaya link
+     * kedaluwarsa berujung pesan yang jelas di halaman login, bukan 403.
      */
     public function verify(Request $request, string $id, string $hash)
     {
-        $invalid = 'Link verifikasi tidak valid atau sudah kedaluwarsa. Login dengan email & password Anda untuk menerima link baru.';
+        $user = $this->userFromLink($request, $id, $hash);
+        if ($user instanceof RedirectResponse) {
+            return $user;
+        }
+
+        return Inertia::render('RegisterSetPassword', [
+            'name' => $user->name,
+            'email' => $user->email,
+            // URL POST membawa expires + signature dari link asli.
+            'action' => URL::temporarySignedRoute(
+                'register.complete',
+                now()->setTimestamp((int) $request->query('expires')),
+                ['id' => $user->id, 'hash' => $hash],
+            ),
+        ]);
+    }
+
+    /** POST form buat password: simpan password + tandai email terverifikasi. */
+    public function complete(Request $request, string $id, string $hash)
+    {
+        $user = $this->userFromLink($request, $id, $hash);
+        if ($user instanceof RedirectResponse) {
+            return $user;
+        }
+
+        $data = $request->validate([
+            'password' => ['required', 'string', 'confirmed', Password::defaults()],
+        ]);
+
+        $needsApproval = (bool) Setting::value('auth.registration_require_approval', true);
+
+        // Update bersyarat: dua submit bersamaan, hanya satu yang menang.
+        $updated = User::whereKey($user->id)
+            ->where('registration_status', User::REG_UNVERIFIED)
+            ->update([
+                'password' => Hash::make($data['password']),
+                'email_verified_at' => now(),
+                'registration_status' => $needsApproval ? User::REG_PENDING : null,
+                'is_active' => ! $needsApproval,
+                'updated_at' => now(),
+            ]);
+
+        if ($updated === 0) {
+            return redirect('/login')->with('error', 'Link ini sudah dipakai. Silakan login.');
+        }
+
+        // Tanpa persetujuan = langsung aktif: tautkan outlet pilihannya sekarang.
+        if (! $needsApproval) {
+            $user->linkRegistrationOutlet();
+        }
+
+        AuditLog::record('auth.email_verified', $user, ['menunggu_persetujuan' => $needsApproval], actor: $user);
+
+        return redirect('/login')->with('success', $needsApproval
+            ? 'Password dibuat & email terverifikasi. Akun bisa dipakai setelah disetujui pengelola outlet — pemberitahuan dikirim lewat email.'
+            : 'Password dibuat & email terverifikasi. Silakan login.');
+    }
+
+    /** User dari link bila signature & hash sah dan masih unverified; selain itu redirect berpesan. */
+    private function userFromLink(Request $request, string $id, string $hash): User|RedirectResponse
+    {
+        $invalid = 'Link tidak valid atau sudah kedaluwarsa. Daftar ulang di halaman Registrasi untuk menerima link baru.';
 
         if (! $request->hasValidSignature()) {
             return redirect('/login')->with('error', $invalid);
@@ -176,26 +298,11 @@ class RegistrationController extends Controller
             return redirect('/login')->with('error', $invalid);
         }
 
-        if ($user->registration_status !== User::REG_UNVERIFIED) {
-            return match ($user->registration_status) {
-                User::REG_PENDING => redirect('/login')->with('success', 'Email sudah terverifikasi. Pendaftaran Anda menunggu persetujuan pengelola outlet.'),
-                User::REG_REJECTED => redirect('/login')->with('error', 'Pendaftaran Anda sudah ditolak. Hubungi HR / atasan Anda.'),
-                default => redirect('/login')->with('success', 'Email sudah terverifikasi. Silakan login.'),
-            };
-        }
-
-        $needsApproval = (bool) Setting::value('auth.registration_require_approval', true);
-
-        $user->forceFill([
-            'email_verified_at' => now(),
-            'registration_status' => $needsApproval ? User::REG_PENDING : null,
-            'is_active' => ! $needsApproval,
-        ])->save();
-
-        AuditLog::record('auth.email_verified', $user, ['menunggu_persetujuan' => $needsApproval], actor: $user);
-
-        return redirect('/login')->with('success', $needsApproval
-            ? 'Email terverifikasi. Akun Anda bisa dipakai setelah disetujui pengelola outlet — pemberitahuan dikirim lewat email.'
-            : 'Email terverifikasi. Silakan login.');
+        return match ($user->registration_status) {
+            User::REG_UNVERIFIED => $user,
+            User::REG_PENDING => redirect('/login')->with('success', 'Email sudah terverifikasi. Pendaftaran Anda menunggu persetujuan pengelola outlet.'),
+            User::REG_REJECTED => redirect('/login')->with('error', 'Pendaftaran Anda sudah ditolak. Hubungi HR / atasan Anda.'),
+            default => redirect('/login')->with('success', 'Akun sudah aktif. Silakan login.'),
+        };
     }
 }

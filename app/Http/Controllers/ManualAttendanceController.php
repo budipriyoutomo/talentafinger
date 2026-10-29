@@ -11,7 +11,10 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Support\AttendancePhoto;
 use App\Support\Geo;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
@@ -34,6 +37,37 @@ class ManualAttendanceController extends Controller
      * sumber (foto + QR), lihat AttendanceLog::recentEmployeeSubmission().
      */
     public const COOLDOWN_MINUTES = 5;
+
+    /** Lock per karyawan: dilepas otomatis setelah ini bila proses mati di tengah jalan. */
+    private const SUBMIT_LOCK_SECONDS = 15;
+
+    /** Lama request kedua menunggu lock sebelum menyerah. */
+    private const SUBMIT_LOCK_WAIT_SECONDS = 5;
+
+    /**
+     * Jalankan $submit (geofence -> simpan foto -> create log) secara eksklusif
+     * per karyawan, setelah lolos cooldown. Tanpa lock, dua kiriman yang datang
+     * hampir bersamaan (double-tap, retry jaringan HP) sama-sama lolos cek
+     * cooldown dan tercatat dua log. Butuh cache store bersama yang mendukung
+     * atomic lock (database / redis), bukan file / array di production.
+     */
+    public static function submitExclusively(string $employeeId, \Closure $submit): JsonResponse
+    {
+        try {
+            return Cache::lock("attendance-submit:{$employeeId}", self::SUBMIT_LOCK_SECONDS)
+                ->block(self::SUBMIT_LOCK_WAIT_SECONDS, function () use ($employeeId, $submit) {
+                    if (AttendanceLog::recentEmployeeSubmission($employeeId, self::COOLDOWN_MINUTES)) {
+                        return response()->json([
+                            'message' => 'Anda baru saja absen. Tunggu ' . self::COOLDOWN_MINUTES . ' menit sebelum absen lagi.',
+                        ], 429);
+                    }
+
+                    return $submit();
+                });
+        } catch (LockTimeoutException) {
+            return response()->json(['message' => 'Absen sedang diproses. Tunggu sebentar lalu cek riwayat.'], 409);
+        }
+    }
 
     /** Halaman /absen (mobile-first, tanpa layout admin). */
     public function show(Request $request)
@@ -73,68 +107,64 @@ class ManualAttendanceController extends Controller
         AttendancePhoto::assertUploadValid($request);
         $data = $request->validate(AttendancePhoto::rules(), AttendancePhoto::messages());
 
-        if (AttendanceLog::recentEmployeeSubmission($employee->id, self::COOLDOWN_MINUTES)) {
+        return self::submitExclusively($employee->id, function () use ($request, $employee, $data) {
+            // Geofence: cocokkan ke outlet TERDEKAT milik karyawan yang punya koordinat
+            // yang masih aktif (minimal satu dijamin ada oleh blockedReason()).
+            $lat = (float) $data['latitude'];
+            $lng = (float) $data['longitude'];
+
+            $nearest = $this->geofenceOutlets($employee)
+                ->map(fn (Outlet $o) => [
+                    'outlet' => $o,
+                    'distance' => Geo::distanceMeters($lat, $lng, $o->latitude, $o->longitude),
+                ])
+                ->sortBy('distance')
+                ->first();
+
+            $distance = (int) round($nearest['distance']);
+            $radius = $this->radius();
+
+            if ($distance > $radius) {
+                return response()->json([
+                    'message' => "Anda berada ±{$distance} m dari outlet terdekat ({$nearest['outlet']->name}). "
+                        . "Absen foto hanya bisa dalam radius {$radius} m.",
+                    'distance_meters' => $distance,
+                    'radius_meters' => $radius,
+                ], 422);
+            }
+
+            $path = AttendancePhoto::store($request->file('photo'));
+
+            // Waktu disimpan dalam jam LOKAL perangkat (sama seperti log mesin), karena
+            // itulah yang dikirim apa adanya ke Talenta.
+            $tz = Setting::value('adms.device_timezone', 'Asia/Jakarta');
+
+            try {
+                $log = AttendanceLog::create([
+                    'source' => AttendanceLog::SOURCE_MANUAL_PHOTO,
+                    'employee_id' => $employee->id,
+                    'outlet_id' => $nearest['outlet']->id,
+                    'machine_id' => null,
+                    'biometric_id_lokal' => $employee->biometric_id,
+                    'timestamp' => now($tz)->format('Y-m-d H:i:s'),
+                    'status_sync' => 'pending_review',
+                    'photo_path' => $path,
+                    'latitude' => $lat,
+                    'longitude' => $lng,
+                    'accuracy_meters' => isset($data['accuracy']) ? (int) round($data['accuracy']) : null,
+                    'distance_meters' => $distance,
+                ]);
+            } catch (\Throwable $e) {
+                // Jangan tinggalkan foto yatim di disk bila log gagal tersimpan.
+                Storage::disk(AttendancePhoto::DISK)->delete($path);
+                throw $e;
+            }
+
             return response()->json([
-                'message' => 'Anda baru saja absen. Tunggu ' . self::COOLDOWN_MINUTES . ' menit sebelum absen lagi.',
-            ], 429);
-        }
-
-        // Geofence: cocokkan ke outlet TERDEKAT milik karyawan yang punya koordinat
-        // yang masih aktif (minimal satu dijamin ada oleh blockedReason()).
-        $lat = (float) $data['latitude'];
-        $lng = (float) $data['longitude'];
-
-        $nearest = $this->geofenceOutlets($employee)
-            ->map(fn (Outlet $o) => [
-                'outlet' => $o,
-                'distance' => Geo::distanceMeters($lat, $lng, $o->latitude, $o->longitude),
-            ])
-            ->sortBy('distance')
-            ->first();
-
-        $distance = (int) round($nearest['distance']);
-        $radius = $this->radius();
-
-        if ($distance > $radius) {
-            return response()->json([
-                'message' => "Anda berada ±{$distance} m dari outlet terdekat ({$nearest['outlet']->name}). "
-                    . "Absen foto hanya bisa dalam radius {$radius} m.",
-                'distance_meters' => $distance,
-                'radius_meters' => $radius,
-            ], 422);
-        }
-
-        $path = AttendancePhoto::store($request->file('photo'));
-
-        // Waktu disimpan dalam jam LOKAL perangkat (sama seperti log mesin), karena
-        // itulah yang dikirim apa adanya ke Talenta.
-        $tz = Setting::value('adms.device_timezone', 'Asia/Jakarta');
-
-        try {
-            $log = AttendanceLog::create([
-                'source' => AttendanceLog::SOURCE_MANUAL_PHOTO,
-                'employee_id' => $employee->id,
-                'outlet_id' => $nearest['outlet']->id,
-                'machine_id' => null,
-                'biometric_id_lokal' => $employee->biometric_id,
-                'timestamp' => now($tz)->format('Y-m-d H:i:s'),
-                'status_sync' => 'pending_review',
-                'photo_path' => $path,
-                'latitude' => $lat,
-                'longitude' => $lng,
-                'accuracy_meters' => isset($data['accuracy']) ? (int) round($data['accuracy']) : null,
-                'distance_meters' => $distance,
-            ]);
-        } catch (\Throwable $e) {
-            // Jangan tinggalkan foto yatim di disk bila log gagal tersimpan.
-            Storage::disk(AttendancePhoto::DISK)->delete($path);
-            throw $e;
-        }
-
-        return response()->json([
-            'message' => "Absen tercatat di {$nearest['outlet']->name} (±{$distance} m). Menunggu persetujuan supervisor.",
-            'log' => $this->presentForEmployee($log->load('outlet')),
-        ], 201);
+                'message' => "Absen tercatat di {$nearest['outlet']->name} (±{$distance} m). Menunggu persetujuan supervisor.",
+                'log' => $this->presentForEmployee($log->load('outlet')),
+            ], 201);
+        });
     }
 
     /** GET /api/attendance-logs/{id}/photo — foto absen manual (disk privat). */
