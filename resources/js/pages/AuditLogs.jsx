@@ -16,6 +16,8 @@ const ACTION_LABEL = {
   'auth.login_blocked': 'Login ditolak (akun nonaktif)',
   'auth.logout': 'Logout',
   'auth.password_changed': 'Ganti password',
+  'auth.password_reset_requested': 'Minta link lupa password',
+  'auth.password_reset': 'Atur ulang password (lupa password)',
   'auth.registered': 'Daftar akun karyawan',
   'auth.email_verified': 'Email pendaftaran diverifikasi',
   'user.registration_approved': 'Pendaftaran akun disetujui',

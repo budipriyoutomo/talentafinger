@@ -10,6 +10,7 @@ use App\Http\Controllers\KioskController;
 use App\Http\Controllers\KioskDeviceController;
 use App\Http\Controllers\ManualAttendanceController;
 use App\Http\Controllers\PasswordController;
+use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\QrAttendanceController;
 use App\Http\Controllers\RegistrationController;
 use App\Http\Controllers\RegistrationReviewController;
@@ -38,6 +39,12 @@ Route::middleware('guest')->group(function () {
     // Registrasi mandiri akun karyawan (404 bila setting auth.registration_enabled mati).
     Route::get('/register', [RegistrationController::class, 'show']);
     Route::post('/register', [RegistrationController::class, 'store'])->middleware('throttle:5,1');
+
+    // Lupa password via email (semua role). Link berisi token dari password broker.
+    Route::get('/forgot-password', [PasswordResetController::class, 'create']);
+    Route::post('/forgot-password', [PasswordResetController::class, 'store'])->middleware('throttle:5,1');
+    Route::get('/reset-password/{token}', [PasswordResetController::class, 'edit'])->name('password.reset');
+    Route::post('/reset-password', [PasswordResetController::class, 'update'])->middleware('throttle:10,1');
 });
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth')->name('logout');
 // Link dari email verifikasi (signed). Di luar guest: link boleh dibuka di

@@ -116,7 +116,12 @@ export default function Login({ registrationEnabled = false }) {
               {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
             </div>
             <div className="space-y-1.5">
-              <label htmlFor="password" className="text-sm font-medium">Password</label>
+              <div className="flex items-center justify-between">
+                <label htmlFor="password" className="text-sm font-medium">Password</label>
+                <Link href="/forgot-password" className="text-xs font-medium text-primary hover:underline">
+                  Lupa password?
+                </Link>
+              </div>
               <div className="relative">
                 <Lock className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input

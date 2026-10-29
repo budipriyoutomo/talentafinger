@@ -52,7 +52,9 @@ class RegistrationController extends Controller
     {
         abort_unless(static::enabled(), 404);
 
-        return Inertia::render('Register');
+        return Inertia::render('Register', [
+            'requiresApproval' => (bool) Setting::value('auth.registration_require_approval', true),
+        ]);
     }
 
     public function store(Request $request)
