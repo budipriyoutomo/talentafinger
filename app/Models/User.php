@@ -273,16 +273,34 @@ class User extends Authenticatable
         return $this->employee_id === null && filled($this->registration_nik);
     }
 
-    /** NIK isian pendaftar baru keburu dipakai karyawan lain (mis. hasil sync Talenta)? */
-    public function registrationNikTaken(): bool
+    /** Karyawan yang sudah terdata dengan NIK isian pendaftar (akan ditautkan saat disetujui). */
+    public function registrationMatchedEmployee(): ?Employee
     {
         return $this->isNewEmployeeRegistration()
-            && Employee::whereRaw('TRIM(employee_code) = ?', [$this->registration_nik])->exists();
+            ? Employee::whereRaw('TRIM(employee_code) = ?', [$this->registration_nik])->first()
+            : null;
     }
 
     /**
-     * Pendaftaran tanpa data karyawan disetujui -> buat karyawannya dari isian
-     * form (nama, NIK, email) lalu tautkan ke akun ini. Panggil di dalam
+     * Alasan pendaftaran tanpa karyawan ini belum bisa disetujui (null = bisa):
+     * NIK isiannya milik karyawan yang sudah punya akun lain, atau yang nonaktif.
+     */
+    public function registrationApprovalBlocker(): ?string
+    {
+        $employee = $this->registrationMatchedEmployee();
+
+        return match (true) {
+            ! $employee => null,
+            static::where('employee_id', $employee->id)->whereKeyNot($this->id)->exists() => "NIK {$this->registration_nik} milik karyawan {$employee->name} yang sudah punya akun. Tolak pendaftaran ini.",
+            ! $employee->is_active => "NIK {$this->registration_nik} milik karyawan nonaktif {$employee->name}. Aktifkan karyawannya dulu, atau tolak pendaftaran ini.",
+            default => null,
+        };
+    }
+
+    /**
+     * Pendaftaran tanpa data karyawan disetujui -> tautkan ke karyawan ber-NIK
+     * sama bila sudah terdata, atau buat karyawan baru dari isian form (nama,
+     * NIK, email). Cek registrationApprovalBlocker() dulu; panggil di dalam
      * transaksi, sebelum linkRegistrationOutlet().
      */
     public function createRegistrationEmployee(): void
@@ -291,7 +309,7 @@ class User extends Authenticatable
             return;
         }
 
-        $employee = Employee::create([
+        $employee = $this->registrationMatchedEmployee() ?? Employee::create([
             'name' => $this->name,
             'employee_code' => $this->registration_nik,
             'email' => $this->email,

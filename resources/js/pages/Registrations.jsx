@@ -117,7 +117,7 @@ export default function Registrations({ status = 'pending', registrations = [], 
                                 <Badge
                                   variant="outline"
                                   className="ml-2 border-amber-500/40 text-[10px] text-amber-600 dark:text-amber-400"
-                                  title="NIK & email belum ada di data karyawan. Disetujui = karyawan baru dibuat dari isian pendaftar."
+                                  title="NIK belum ada di data karyawan. Disetujui = karyawan baru dibuat dari isian pendaftar."
                                 >
                                   karyawan baru
                                 </Badge>
@@ -128,6 +128,14 @@ export default function Registrations({ status = 'pending', registrations = [], 
                             </div>
                             <div className="text-xs text-muted-foreground">{r.email}</div>
                             {r.job_position && <div className="text-xs text-muted-foreground">{r.job_position}</div>}
+                            {r.matched_employee && !r.approval_blocker && (
+                              <div className="mt-1 text-xs text-indigo-600 dark:text-indigo-400">
+                                NIK cocok dengan karyawan <b>{r.matched_employee}</b>: akan ditautkan saat disetujui.
+                              </div>
+                            )}
+                            {r.approval_blocker && (
+                              <div className="mt-1 text-xs text-red-600 dark:text-red-400">{r.approval_blocker}</div>
+                            )}
                           </td>
                           <td className="py-2 pr-3 font-mono text-xs">{r.nik ?? '—'}</td>
                           <td className="py-2 pr-3 text-xs">
@@ -165,7 +173,7 @@ export default function Registrations({ status = 'pending', registrations = [], 
                           {status === 'pending' && (
                             <td className="py-2 text-right">
                               <div className="flex justify-end gap-2">
-                                <Button size="sm" className="gap-1" disabled={busyId === r.id || !r.employee_active} onClick={() => approve(r)}>
+                                <Button size="sm" className="gap-1" disabled={busyId === r.id || !r.employee_active || !!r.approval_blocker} onClick={() => approve(r)}>
                                   {busyId === r.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                                   Setujui
                                 </Button>

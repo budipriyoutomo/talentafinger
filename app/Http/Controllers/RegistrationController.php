@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
 use App\Models\Company;
-use App\Models\Employee;
 use App\Models\Outlet;
 use App\Models\Role;
 use App\Models\Setting;
@@ -24,20 +23,15 @@ use Inertia\Inertia;
 
 /**
  * Registrasi mandiri akun KARYAWAN (bukan pengguna panel): nama, NIK, email,
- * plus outlet tempat kerja yang dipilih pendaftar. Dua jalur:
- *  - NIK + email cocok dengan data karyawan aktif -> akun ditautkan ke karyawan itu.
- *  - NIK DAN email belum dipakai karyawan mana pun -> akun tanpa karyawan;
- *    karyawannya baru dibuat dari isian form saat disetujui (selalu wajib
- *    persetujuan). Cocok sebagian (NIK ada tapi email beda, atau sebaliknya)
- *    diabaikan diam-diam supaya NIK orang lain tak bisa dibajak.
- * Link dikirim ke email itu; di sanalah
- * pemilik email membuat password, sehingga orang lain yang tahu NIK + email
- * tak bisa menentukan password akun tersebut. Setelah itu akun aktif, atau
- * menunggu persetujuan pengelola outlet (setting auth.registration_require_approval,
- * lihat RegistrationReviewController).
+ * plus outlet tempat kerja yang dipilih pendaftar. Tidak dicocokkan dengan
+ * data karyawan: akun dibuat tanpa karyawan, dan karyawannya baru ditentukan
+ * saat disetujui (NIK sudah terdata -> ditautkan, belum -> dibuat dari isian
+ * form; lihat User::createRegistrationEmployee).
  *
- * Respon /register SELALU sama apa pun hasil pencocokannya, supaya halaman
- * ini tak bisa dipakai mengintip NIK / email / siapa yang sudah punya akun.
+ * Link dikirim ke email isian; di sanalah pemilik email membuat password,
+ * sehingga orang lain tak bisa menentukan password akun tersebut. Karena tak
+ * ada pencocokan data, persetujuan pengelola outlet SELALU wajib
+ * (RegistrationReviewController) — penyetuju yang memastikan orangnya benar.
  */
 class RegistrationController extends Controller
 {
@@ -48,7 +42,7 @@ class RegistrationController extends Controller
 
     private const NIK_DECAY_SECONDS = 600;
 
-    private const GENERIC_MESSAGE = 'Jika data Anda dapat diproses, link untuk membuat password telah dikirim ke email tersebut. '
+    private const SUCCESS_MESSAGE = 'Link untuk membuat password telah dikirim ke email Anda. '
         .'Cek kotak masuk / folder spam. Link berlaku '.self::LINK_TTL_MINUTES.' menit.';
 
     public static function enabled(): bool
@@ -61,7 +55,7 @@ class RegistrationController extends Controller
         abort_unless(static::enabled(), 404);
 
         return Inertia::render('Register', [
-            'requiresApproval' => (bool) Setting::value('auth.registration_require_approval', true),
+            'requiresApproval' => true,
             'companies' => $this->orgOptions(),
         ]);
     }
@@ -129,9 +123,9 @@ class RegistrationController extends Controller
         $nik = trim($data['nik']);
         $email = mb_strtolower(trim($data['email']));
 
-        // Kunci NIK + IP: orang iseng yang asal mencoba NIK rekan kerja tak bisa
-        // memblokir pendaftaran pemilik NIK dari perangkatnya sendiri. Batas
-        // global per IP tetap dari throttle di route.
+        // Kunci NIK + IP: batasi spam pendaftaran per NIK tanpa memblokir
+        // pemilik NIK dari perangkatnya sendiri. Batas global per IP tetap
+        // dari throttle di route.
         $nikKey = 'register:'.mb_strtolower($nik).'|'.$request->ip();
         if (RateLimiter::tooManyAttempts($nikKey, self::MAX_ATTEMPTS_PER_NIK)) {
             throw ValidationException::withMessages([
@@ -141,76 +135,27 @@ class RegistrationController extends Controller
         }
         RateLimiter::hit($nikKey, self::NIK_DECAY_SECONDS);
 
-        $employee = Employee::where('is_active', true)
-            ->whereRaw('TRIM(employee_code) = ?', [$nik])
-            ->whereRaw('LOWER(TRIM(email)) = ?', [$email])
-            ->where(fn ($q) => $q->whereNull('resign_date')->orWhere('resign_date', '>', today()))
-            ->first();
+        $this->guardEmail($email);
 
-        if ($employee) {
-            if ($this->claimable($employee, $email)) {
-                $this->register($employee, $email, $nik, $outlet);
-            }
-        } elseif ($this->isUnknownPerson($nik, $email) && $this->claimableNew($nik, $email)) {
-            $this->registerNew(trim($data['name']), $email, $nik, $outlet);
-        }
-
-        return back()->with('success', self::GENERIC_MESSAGE);
-    }
-
-    /** NIK maupun email belum dipakai karyawan mana pun (aktif atau tidak). */
-    private function isUnknownPerson(string $nik, string $email): bool
-    {
-        return ! Employee::whereRaw('TRIM(employee_code) = ?', [$nik])
-            ->orWhereRaw('LOWER(TRIM(email)) = ?', [$email])
-            ->exists();
-    }
-
-    /**
-     * Pendaftar tanpa data karyawan boleh didaftarkan? Aturannya sama dengan
-     * claimable(), dengan pendaftaran lama dicari lewat NIK isiannya. Akun
-     * belum-verifikasi lain yang memakai email ini boleh diganti (mis. salah
-     * ketik NIK lalu daftar ulang): link baru tetap hanya sampai ke pemilik email.
-     */
-    private function claimableNew(string $nik, string $email): bool
-    {
-        $existing = User::whereNull('employee_id')->where('registration_nik', $nik)->latest('registered_at')->first();
-
-        if ($existing && ! in_array($existing->registration_status, [User::REG_UNVERIFIED, User::REG_REJECTED], true)) {
-            return false;
-        }
-
-        if ($existing?->registration_status === User::REG_REJECTED
-            && $existing->reviewed_at?->gt(now()->subDays(User::REJECTED_RETENTION_DAYS))) {
-            return false;
-        }
-
-        $emailOwner = User::whereRaw('LOWER(email) = ?', [$email])->first();
-
-        return ! $emailOwner
-            || ($existing && $emailOwner->is($existing))
-            || $emailOwner->registration_status === User::REG_UNVERIFIED;
-    }
-
-    private function registerNew(string $name, string $email, string $nik, Outlet $outlet): void
-    {
         try {
-            $user = DB::transaction(function () use ($name, $email, $nik, $outlet) {
-                User::whereNull('employee_id')
-                    ->where(fn ($q) => $q
-                        ->where(fn ($n) => $n->where('registration_nik', $nik)
-                            ->whereIn('registration_status', [User::REG_UNVERIFIED, User::REG_REJECTED]))
-                        ->orWhere(fn ($e) => $e->whereRaw('LOWER(email) = ?', [$email])
-                            ->where('registration_status', User::REG_UNVERIFIED)))
+            $user = DB::transaction(function () use ($data, $email, $nik, $outlet) {
+                // Pendaftaran lama yang belum diverifikasi (email sama, atau NIK
+                // sama) diganti: link baru tetap hanya sampai ke pemilik email.
+                User::where('registration_status', User::REG_UNVERIFIED)
+                    ->where(fn ($q) => $q->whereRaw('LOWER(email) = ?', [$email])
+                        ->orWhere(fn ($n) => $n->whereNull('employee_id')->where('registration_nik', $nik)))
                     ->delete();
 
                 return User::create([
-                    'name' => $name,
+                    'name' => trim($data['name']),
                     'email' => $email,
+                    // Password acak yang tak pernah diberitahukan ke siapa pun:
+                    // akun baru bisa dipakai setelah pemilik email membuat password.
                     'password' => Hash::make(Str::random(64)),
                     'must_change_password' => false,
                     'role' => Role::EMPLOYEE,
                     'is_active' => false,
+                    // Karyawannya baru ditentukan saat disetujui (User::createRegistrationEmployee).
                     'employee_id' => null,
                     'registration_nik' => $nik,
                     'registration_status' => User::REG_UNVERIFIED,
@@ -219,71 +164,44 @@ class RegistrationController extends Controller
                 ]);
             });
         } catch (UniqueConstraintViolationException) {
-            return;
-        }
-
-        AuditLog::record('auth.registered', $user, ['nik' => $nik, 'email' => $email, 'outlet' => $outlet->name, 'karyawan_baru' => true], actor: $user);
-
-        static::sendVerificationLink($user);
-    }
-
-    /**
-     * Karyawan ini boleh didaftarkan? Belum punya akun (pendaftaran lama yang
-     * belum diverifikasi boleh diganti), dan emailnya tak dipakai akun lain.
-     * Pendaftaran yang DITOLAK baru boleh diganti setelah masa simpannya habis
-     * (User::REJECTED_RETENTION_DAYS, lalu dibuang model:prune), supaya orang
-     * yang sama tak terus mengisi antrian penyetuju; sebelum itu hubungi HR.
-     */
-    private function claimable(Employee $employee, string $email): bool
-    {
-        $existing = User::where('employee_id', $employee->id)->first();
-
-        if ($existing && ! in_array($existing->registration_status, [User::REG_UNVERIFIED, User::REG_REJECTED], true)) {
-            return false;
-        }
-
-        if ($existing?->registration_status === User::REG_REJECTED
-            && $existing->reviewed_at?->gt(now()->subDays(User::REJECTED_RETENTION_DAYS))) {
-            return false;
-        }
-
-        $emailOwner = User::whereRaw('LOWER(email) = ?', [$email])->first();
-
-        return ! $emailOwner || ($existing && $emailOwner->is($existing));
-    }
-
-    private function register(Employee $employee, string $email, string $nik, Outlet $outlet): void
-    {
-        try {
-            $user = DB::transaction(function () use ($employee, $email, $outlet) {
-                User::where('employee_id', $employee->id)
-                    ->whereIn('registration_status', [User::REG_UNVERIFIED, User::REG_REJECTED])
-                    ->delete();
-
-                return User::create([
-                    'name' => $employee->name,
-                    'email' => $email,
-                    // Password acak yang tak pernah diberitahukan ke siapa pun:
-                    // akun baru bisa dipakai setelah pemilik email membuat password.
-                    'password' => Hash::make(Str::random(64)),
-                    'must_change_password' => false,
-                    'role' => Role::EMPLOYEE,
-                    'is_active' => false,
-                    'employee_id' => $employee->id,
-                    'registration_status' => User::REG_UNVERIFIED,
-                    'registered_at' => now(),
-                    'registration_outlet_id' => $outlet->id,
-                ]);
-            });
-        } catch (UniqueConstraintViolationException) {
-            // Dua pendaftaran serentak untuk karyawan / email yang sama:
-            // yang kalah diam saja, respon tetap generik.
-            return;
+            // Dua pendaftaran serentak dengan email yang sama.
+            throw ValidationException::withMessages(['email' => 'Email ini baru saja didaftarkan. Cek kotak masuk Anda.']);
         }
 
         AuditLog::record('auth.registered', $user, ['nik' => $nik, 'email' => $email, 'outlet' => $outlet->name], actor: $user);
 
         static::sendVerificationLink($user);
+
+        return back()->with('success', self::SUCCESS_MESSAGE);
+    }
+
+    /**
+     * Email login harus unik. Pendaftaran belum-verifikasi boleh ditimpa;
+     * selain itu pendaftar diberi tahu alasannya. Pendaftaran yang DITOLAK baru
+     * boleh diulang setelah masa simpannya habis (User::REJECTED_RETENTION_DAYS,
+     * lalu dibuang model:prune), supaya antrian penyetuju tak terus terisi.
+     */
+    private function guardEmail(string $email): void
+    {
+        $owner = User::whereRaw('LOWER(email) = ?', [$email])->first();
+
+        $message = match (true) {
+            ! $owner, $owner->registration_status === User::REG_UNVERIFIED => null,
+            $owner->registration_status === User::REG_PENDING => 'Email ini sudah terdaftar dan sedang menunggu persetujuan pengelola outlet.',
+            $owner->registration_status === User::REG_REJECTED
+                && $owner->reviewed_at?->gt(now()->subDays(User::REJECTED_RETENTION_DAYS)) => 'Pendaftaran dengan email ini sudah ditolak. Hubungi HR / atasan Anda.',
+            $owner->registration_status === User::REG_REJECTED => null,
+            default => 'Email ini sudah dipakai akun lain. Silakan login, atau pakai "Lupa password".',
+        };
+
+        if ($message) {
+            throw ValidationException::withMessages(['email' => $message]);
+        }
+
+        // Pendaftaran ditolak yang masa simpannya habis: buang supaya email bisa dipakai lagi.
+        if ($owner?->registration_status === User::REG_REJECTED) {
+            $owner->delete();
+        }
     }
 
     /** Kirim link buat password + verifikasi ke email pendaftar. */
@@ -335,9 +253,11 @@ class RegistrationController extends Controller
             'password' => ['required', 'string', 'confirmed', Password::defaults()],
         ]);
 
-        // Pendaftar tanpa data karyawan selalu lewat persetujuan pengelola outlet.
-        $needsApproval = (bool) Setting::value('auth.registration_require_approval', true)
-            || $user->isNewEmployeeRegistration();
+        // Tanpa pencocokan data, pendaftar baru selalu lewat persetujuan
+        // pengelola outlet. Setting hanya berlaku untuk pendaftaran lama yang
+        // sudah tertaut ke karyawan (dibuat sebelum aturan ini).
+        $needsApproval = $user->isNewEmployeeRegistration()
+            || (bool) Setting::value('auth.registration_require_approval', true);
 
         // Update bersyarat: dua submit bersamaan, hanya satu yang menang.
         $updated = User::whereKey($user->id)

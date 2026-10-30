@@ -44,8 +44,11 @@ class RegistrationReviewController extends Controller
                 'name' => $u->name,
                 'email' => $u->email,
                 'nik' => $u->employee?->employee_code ?? $u->registration_nik,
-                // Belum ada di data karyawan: karyawannya dibuat saat disetujui.
-                'is_new_employee' => $u->isNewEmployeeRegistration(),
+                // Belum tertaut karyawan: saat disetujui ditautkan ke karyawan
+                // ber-NIK sama (matched_employee) atau dibuat baru dari isian.
+                'is_new_employee' => $u->isNewEmployeeRegistration() && ! $u->registrationMatchedEmployee(),
+                'matched_employee' => $u->registrationMatchedEmployee()?->name,
+                'approval_blocker' => $u->registrationApprovalBlocker(),
                 'job_position' => $u->employee?->job_position,
                 'outlets' => $u->employee?->outlets->pluck('name')->all() ?? [],
                 // Outlet pilihan pendaftar; is_new = karyawan belum tertaut ke
@@ -79,8 +82,8 @@ class RegistrationReviewController extends Controller
         $user = $this->findPending($request, $id);
 
         if ($user->isNewEmployeeRegistration()) {
-            if ($user->registrationNikTaken()) {
-                return response()->json(['message' => "NIK {$user->registration_nik} sudah dipakai karyawan lain. Tolak pendaftarannya, lalu minta pendaftar memakai NIK & email yang terdata."], 422);
+            if ($blocker = $user->registrationApprovalBlocker()) {
+                return response()->json(['message' => $blocker], 422);
             }
         } elseif (! $user->employee?->is_active) {
             return response()->json(['message' => 'Karyawan ini sudah nonaktif. Tolak pendaftarannya.'], 422);

@@ -120,8 +120,8 @@ class UserController extends Controller
         // Mengaktifkan akun pendaftar (belum verifikasi / menunggu / ditolak)
         // dari form ini = menyetujuinya; tanpa ini login tetap tertahan statusnya.
         $approvingRegistration = $user->is_active && $user->isRegistrationIncomplete();
-        if ($approvingRegistration && empty($data['employee_id']) && $user->registrationNikTaken()) {
-            return response()->json(['message' => "NIK {$user->registration_nik} sudah dipakai karyawan lain. Pilih karyawan itu di kolom Karyawan, atau tolak pendaftarannya."], 422);
+        if ($approvingRegistration && empty($data['employee_id']) && ($blocker = $user->registrationApprovalBlocker())) {
+            return response()->json(['message' => $blocker], 422);
         }
         if ($approvingRegistration) {
             $user->forceFill([

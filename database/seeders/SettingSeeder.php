@@ -242,8 +242,8 @@ class SettingSeeder extends Seeder
                 'group' => 'auth',
                 'type' => 'boolean',
                 'label' => 'Aktifkan Registrasi Karyawan',
-                'description' => 'Karyawan bisa membuat akun sendiri di /register dengan NIK + email yang tercatat di Talenta '
-                    . 'dan outlet tempat kerjanya, lalu membuat password lewat link di email. Butuh SMTP (MAIL_*) di .env.',
+                'description' => 'Karyawan daftar sendiri di /register (nama, NIK, email, outlet; tanpa pencocokan data), '
+                    . 'buat password via link email, lalu disetujui pengelola outlet. Butuh SMTP (MAIL_*) + queue worker.',
                 'default' => '0',
             ],
             [
@@ -251,8 +251,8 @@ class SettingSeeder extends Seeder
                 'group' => 'auth',
                 'type' => 'boolean',
                 'label' => 'Wajib Persetujuan Pengelola',
-                'description' => 'Bila aktif, akun yang sudah verifikasi email baru bisa login setelah disetujui user ber-permission '
-                    . '"Setujui / tolak pendaftaran akun karyawan" di outlet karyawan itu (menu Pendaftaran Akun).',
+                'description' => 'Hanya untuk pendaftaran lama yang sudah tertaut ke karyawan. Pendaftaran baru dari /register '
+                    . 'SELALU wajib disetujui user ber-permission "Setujui / tolak pendaftaran akun karyawan" (menu Pendaftaran Akun).',
                 'default' => '1',
             ],
 

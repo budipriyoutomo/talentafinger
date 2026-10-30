@@ -49,11 +49,7 @@ function Field({ id, label, icon: Icon, error, hint, className = '', ...props })
   )
 }
 
-/**
- * Setelah kirim, server SELALU membalas pesan yang sama (flash.success) apa
- * pun hasil pencocokan NIK + email — panel ini sengaja tak bilang "berhasil
- * terdaftar", hanya "bila data dapat diproses, cek email".
- */
+/** Setelah pendaftaran tersimpan: arahkan ke email untuk membuat password. */
 function SuccessPanel({ message, email, steps, onAgain }) {
   return (
     <div className="space-y-6">
@@ -89,7 +85,7 @@ function SuccessPanel({ message, email, steps, onAgain }) {
       </ol>
 
       <p className="text-xs text-muted-foreground">
-        Tidak menerima email dalam beberapa menit? Periksa folder spam, atau daftar ulang dengan NIK & email yang sama
+        Tidak menerima email dalam beberapa menit? Periksa folder spam, atau daftar ulang dengan email yang sama
         untuk menerima link baru. Bila tetap tidak ada, hubungi HR / atasan Anda.
       </p>
 
@@ -204,7 +200,8 @@ export default function Register({ requiresApproval = true, companies = [] }) {
                 </span>
                 <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Daftar akun karyawan</h1>
                 <p className="text-sm text-muted-foreground sm:text-base">
-                  Isi data diri Anda. Link untuk membuat password akan dikirim ke email tersebut.
+                  Isi data diri Anda. Link untuk membuat password akan dikirim ke email Anda, lalu pendaftaran
+                  disetujui oleh pengelola outlet.
                 </p>
               </div>
 
