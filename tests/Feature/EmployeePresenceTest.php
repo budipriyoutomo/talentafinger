@@ -123,6 +123,41 @@ class EmployeePresenceTest extends TestCase
                 ->etc());
     }
 
+    public function test_raw_log_detail_semua_tempat_dan_status_pada_tanggal_itu(): void
+    {
+        $hari = today()->toDateString();
+        $this->log($this->kopiA, '101', "$hari 08:00:00");
+        $this->log($this->kopiB, '101', "$hari 12:00:05", 'duplicate');
+        $this->log($this->sateA, '101', "$hari 17:00:00");
+        // Tanggal lain & PIN lain tak ikut.
+        $this->log($this->kopiA, '101', today()->subDay()->toDateString() . ' 08:00:00');
+        $this->log($this->kopiA, '999', "$hari 09:00:00");
+
+        $andi = Employee::where('biometric_id', '101')->first();
+        $this->actingAs($this->user('admin'));
+
+        $this->getJson("/employee-presence/logs?date=$hari&employee_id={$andi->id}")
+            ->assertOk()
+            ->assertJsonCount(3, 'logs')
+            ->assertJsonPath('logs.0.timestamp', "$hari 08:00:00")
+            ->assertJsonPath('logs.0.serial_number', 'SN-KOPI-A')
+            ->assertJsonPath('logs.1.status', 'duplicate')
+            ->assertJsonPath('logs.1.counted', false)
+            ->assertJsonPath('logs.2.outlet_name', 'Sate Menteng');
+
+        // PIN tak dikenal: dicari lewat PIN.
+        $this->getJson("/employee-presence/logs?date=$hari&pin=999")
+            ->assertOk()
+            ->assertJsonCount(1, 'logs')
+            ->assertJsonPath('logs.0.pin', '999');
+
+        // Manager outlet Kopi tak melihat log di mesin Sate.
+        $this->actingAs($this->user('manager', $this->kopi));
+        $this->getJson("/employee-presence/logs?date=$hari&employee_id={$andi->id}")
+            ->assertOk()
+            ->assertJsonCount(2, 'logs');
+    }
+
     public function test_pin_tak_dikenal_tetap_tampil_tanpa_nama(): void
     {
         $this->log($this->kopiA, '999', today()->toDateString() . ' 08:00:00');

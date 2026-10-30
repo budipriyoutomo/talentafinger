@@ -113,6 +113,15 @@ export default function Registrations({ status = 'pending', registrations = [], 
                           <td className="py-2 pr-3">
                             <div className="font-medium">
                               {r.name}
+                              {r.is_new_employee && (
+                                <Badge
+                                  variant="outline"
+                                  className="ml-2 border-amber-500/40 text-[10px] text-amber-600 dark:text-amber-400"
+                                  title="NIK & email belum ada di data karyawan. Disetujui = karyawan baru dibuat dari isian pendaftar."
+                                >
+                                  karyawan baru
+                                </Badge>
+                              )}
                               {!r.employee_active && (
                                 <Badge variant="destructive" className="ml-2 text-[10px]">karyawan nonaktif</Badge>
                               )}

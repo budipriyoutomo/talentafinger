@@ -381,7 +381,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
         accessorKey: 'name',
         header: 'Nama',
         cell: ({ row }) => (
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-[180px] max-w-xs flex-wrap items-center gap-1.5 whitespace-normal">
             <span className="font-medium">{row.getValue('name')}</span>
             {Number(row.original.device_privilege) !== 0 && (
               <Badge variant="secondary" title={privilegeLabel(row.original.device_privilege)}>Admin</Badge>
@@ -413,7 +413,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
         cell: ({ row }) => {
           const e = row.original
           return (
-            <div className="flex min-w-0 flex-col gap-1">
+            <div className="flex max-w-[220px] min-w-0 flex-col gap-1">
               {e.email ? (
                 <span className="truncate text-sm" title={e.email}>{e.email}</span>
               ) : (
@@ -460,7 +460,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
           const outlets = row.original.outlets ?? []
           if (outlets.length === 0) return <span className="text-muted-foreground">-</span>
           return (
-            <div className="flex flex-col gap-1">
+            <div className="flex min-w-[140px] flex-col gap-1">
               {outlets.map((o) => (
                 <div key={o.id} className="text-sm">
                   <div className="font-medium">{o.name}</div>
@@ -505,7 +505,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
           const canAccount = canManageUsers && canGetAccount(e)
           if (!canManage && !canRemove && !canAccount) return <span className="text-xs text-muted-foreground">-</span>
           return (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex min-w-[160px] flex-wrap gap-2">
               {canManage && (
                 <>
                   <Button onClick={() => openEdit(e)} variant="outline" size="sm" className="gap-1">
@@ -540,8 +540,8 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
           {canSyncFingerprint && selectedIds.length > 0 && (
             <>
               <Button onClick={() => setBulkOpen(true)} className="gap-2">
@@ -578,7 +578,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
           )}
         </div>
         {canManage && (
-          <Button onClick={openCreate} className="gap-2">
+          <Button onClick={openCreate} className="gap-2 self-end sm:self-auto">
             <Plus className="h-4 w-4" />
             Add Employee
           </Button>
@@ -587,11 +587,11 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
 
       {showForm && canManage && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 p-2 backdrop-blur-sm sm:p-4"
           onMouseDown={(e) => { if (e.target === e.currentTarget) closeForm() }}
         >
-          <div className="my-10 w-full max-w-3xl rounded-2xl border bg-card text-card-foreground shadow-2xl">
-            <div className="flex items-start justify-between gap-4 border-b border-border p-5">
+          <div className="my-4 w-full max-w-3xl sm:my-10 rounded-2xl border bg-card text-card-foreground shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-border p-4 sm:p-5">
               <div className="space-y-1">
                 <h3 className="text-lg font-semibold text-foreground">
                   {editingId ? 'Edit Karyawan' : 'Tambah Karyawan'}
@@ -608,7 +608,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
               </div>
               <Button variant="ghost" size="sm" onClick={closeForm}><X className="h-4 w-4" /></Button>
             </div>
-            <form onSubmit={handleSubmit} className="space-y-4 p-5">
+            <form onSubmit={handleSubmit} className="space-y-4 p-4 sm:p-5">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Nama</label>
@@ -713,9 +713,9 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                       return (
                         <span
                           key={id}
-                          className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-sm"
+                          className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-sm"
                         >
-                          <span className="font-medium">{o?.name ?? id}</span>
+                          <span className="truncate font-medium">{o?.name ?? id}</span>
                           {o?.brand_name && <span className="text-xs text-muted-foreground">· {o.brand_name}</span>}
                           <button
                             type="button"
@@ -819,7 +819,7 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
             </div>
             {showFilters && (
             <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 md:grid-cols-4">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-foreground">Company</label>
                 <Select value={companyFilter} onChange={(e) => onCompanyFilterChange(e.target.value)}>

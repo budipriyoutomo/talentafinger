@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
 import { Combobox } from '@/components/ui/combobox'
 import { cn } from '@/lib/utils'
+import { STATUS_LABEL, STATUS_VARIANT } from '@/components/ManualReviewDialog'
 import {
   AlertTriangle,
   CalendarDays,
@@ -131,7 +132,104 @@ function Field({ label, children, className }) {
   )
 }
 
-/** Detail satu baris: ringkasan tap karyawan di satu mesin pada satu hari. */
+// Raw log milik baris yang sedang dibuka (sumber + tempat sama)?
+const isSamePlace = (log, row) =>
+  log.source === row.source &&
+  (row.machine_id
+    ? log.machine_id === row.machine_id
+    : !log.machine_id && log.outlet_id === row.outlet_id && (log.kiosk_id || null) === (row.kiosk_id || null))
+
+/** Tabel raw log satu orang pada satu tanggal (semua tempat & status). */
+function RawLogs({ row }) {
+  const [state, setState] = useState({ loading: true, error: null, logs: [] })
+
+  useEffect(() => {
+    const params = new URLSearchParams({ date: row.date })
+    if (row.employee_id) params.set('employee_id', row.employee_id)
+    else params.set('pin', row.pin)
+
+    const controller = new AbortController()
+    fetch(`/employee-presence/logs?${params}`, { headers: { Accept: 'application/json' }, signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      })
+      .then((data) => setState({ loading: false, error: null, logs: data.logs || [] }))
+      .catch((e) => e.name !== 'AbortError' && setState({ loading: false, error: e.message, logs: [] }))
+    return () => controller.abort()
+  }, [row.date, row.employee_id, row.pin])
+
+  if (state.loading) {
+    return (
+      <div className="text-muted-foreground flex items-center justify-center gap-2 py-8 text-sm">
+        <Loader2 className="h-4 w-4 animate-spin" /> Memuat raw log...
+      </div>
+    )
+  }
+  if (state.error) {
+    return <div className="py-6 text-center text-sm text-red-600 dark:text-red-400">Gagal memuat raw log ({state.error}).</div>
+  }
+  if (state.logs.length === 0) {
+    return <div className="text-muted-foreground py-6 text-center text-sm">Tidak ada raw log.</div>
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-lg border">
+      <table className="w-full text-sm">
+        <thead className="bg-muted/50 text-muted-foreground text-xs">
+          <tr>
+            <th className="px-3 py-2 text-left font-medium">Jam</th>
+            <th className="px-3 py-2 text-left font-medium">Sumber / Tempat</th>
+            <th className="px-3 py-2 text-left font-medium">PIN</th>
+            <th className="px-3 py-2 text-left font-medium">Status</th>
+            <th className="px-3 py-2 text-left font-medium">Diterima</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {state.logs.map((log) => {
+            const meta = SOURCE_META[log.source] || SOURCE_META.machine
+            const Icon = meta.icon
+            const same = isSamePlace(log, row)
+            return (
+              <tr key={log.id} className={cn('align-top', same && 'bg-indigo-50/60 dark:bg-indigo-950/30', !log.counted && 'opacity-60')}>
+                <td className="px-3 py-2 font-mono font-semibold whitespace-nowrap">{log.timestamp?.slice(11, 19)}</td>
+                <td className="px-3 py-2">
+                  <div className="flex items-start gap-1.5">
+                    <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-indigo-500" />
+                    <div className="min-w-0">
+                      <div className="font-medium">
+                        {log.machine_id ? log.machine_name || 'Mesin tak dikenal' : [`Absen ${meta.label}`, log.kiosk_name].filter(Boolean).join(' · ')}
+                      </div>
+                      <div className="text-muted-foreground text-xs">
+                        {[log.serial_number, log.outlet_name].filter(Boolean).join(' · ') || '-'}
+                      </div>
+                      {log.error_message && (
+                        <div className="mt-1 text-xs text-red-600 dark:text-red-400">{log.error_message}</div>
+                      )}
+                      {log.payload_raw && (
+                        <details className="mt-1 text-xs">
+                          <summary className="text-muted-foreground hover:text-foreground cursor-pointer">Payload</summary>
+                          <pre className="bg-muted mt-1 max-w-xs overflow-x-auto rounded p-2 font-mono text-[11px] whitespace-pre-wrap break-all">{log.payload_raw}</pre>
+                        </details>
+                      )}
+                    </div>
+                  </div>
+                </td>
+                <td className="px-3 py-2 font-mono text-xs">{log.pin || '-'}</td>
+                <td className="px-3 py-2">
+                  <Badge variant={STATUS_VARIANT[log.status] || 'info'}>{STATUS_LABEL[log.status] || log.status}</Badge>
+                </td>
+                <td className="text-muted-foreground px-3 py-2 font-mono text-xs whitespace-nowrap">{log.received_at || '-'}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/** Detail satu baris: ringkasan tap + raw log karyawan pada hari itu. */
 function PresenceDialog({ row, onClose }) {
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
@@ -146,7 +244,7 @@ function PresenceDialog({ row, onClose }) {
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-card text-card-foreground mt-10 w-full max-w-xl overflow-hidden rounded-xl border shadow-2xl">
+      <div className="bg-card text-card-foreground mt-10 w-full max-w-3xl overflow-hidden rounded-xl border shadow-2xl">
         <div className="flex items-start justify-between gap-3 border-b p-5">
           <div className="flex items-center gap-3">
             <div
@@ -187,6 +285,16 @@ function PresenceDialog({ row, onClose }) {
                 <div className={cn('mt-0.5 font-mono text-lg font-bold', tone)}>{value}</div>
               </div>
             ))}
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h4 className="text-sm font-semibold">Raw log hari ini</h4>
+              <span className="text-muted-foreground text-xs">
+                Semua tempat & status · <span className="rounded bg-indigo-50 px-1 dark:bg-indigo-950/60">disorot</span> = tempat baris ini · pudar = tidak dihitung
+              </span>
+            </div>
+            <RawLogs row={row} />
           </div>
         </div>
 

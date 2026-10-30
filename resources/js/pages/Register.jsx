@@ -6,13 +6,13 @@ import { Select } from '@/components/ui/select'
 import ThemeToggle from '@/components/ThemeToggle'
 import {
   UserPlus, Loader2, Mail, IdCard, ScanFace, ArrowLeft, MailCheck, ShieldCheck, LogIn, RotateCcw,
-  Building2, Tag, Store,
+  Building2, Tag, Store, User,
 } from 'lucide-react'
 
 // Langkah pendaftaran; dipakai panel brand (desktop) dan panel sukses.
 // Langkah persetujuan hanya bila setting auth.registration_require_approval aktif.
 const stepsFor = (requiresApproval) => [
-  { icon: IdCard, title: 'Isi data diri', text: 'NIK & email yang tercatat di Talenta, plus outlet tempat Anda bekerja.' },
+  { icon: IdCard, title: 'Isi data diri', text: 'Nama, NIK, email, plus outlet tempat Anda bekerja.' },
   { icon: MailCheck, title: 'Buat password', text: 'Klik link di email, lalu buat password Anda. Link berlaku 60 menit.' },
   requiresApproval
     ? { icon: ShieldCheck, title: 'Tunggu persetujuan', text: 'Pengelola outlet menyetujui, lalu Anda bisa login.' }
@@ -52,7 +52,7 @@ function Field({ id, label, icon: Icon, error, hint, className = '', ...props })
 /**
  * Setelah kirim, server SELALU membalas pesan yang sama (flash.success) apa
  * pun hasil pencocokan NIK + email — panel ini sengaja tak bilang "berhasil
- * terdaftar", hanya "bila cocok, cek email".
+ * terdaftar", hanya "bila data dapat diproses, cek email".
  */
 function SuccessPanel({ message, email, steps, onAgain }) {
   return (
@@ -90,7 +90,7 @@ function SuccessPanel({ message, email, steps, onAgain }) {
 
       <p className="text-xs text-muted-foreground">
         Tidak menerima email dalam beberapa menit? Periksa folder spam, atau daftar ulang dengan NIK & email yang sama
-        untuk menerima link baru. Bila tetap tidak ada, pastikan NIK & email sesuai data di Talenta.
+        untuk menerima link baru. Bila tetap tidak ada, hubungi HR / atasan Anda.
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -111,6 +111,7 @@ export default function Register({ requiresApproval = true, companies = [] }) {
   const [submittedEmail, setSubmittedEmail] = useState('')
   const [showForm, setShowForm] = useState(false)
   const { data, setData, post, processing, errors, reset } = useForm({
+    name: '',
     nik: '',
     email: '',
     company_id: '',
@@ -203,7 +204,7 @@ export default function Register({ requiresApproval = true, companies = [] }) {
                 </span>
                 <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Daftar akun karyawan</h1>
                 <p className="text-sm text-muted-foreground sm:text-base">
-                  Gunakan NIK dan email yang tercatat di Talenta. Link untuk membuat password akan dikirim ke email tersebut.
+                  Isi data diri Anda. Link untuk membuat password akan dikirim ke email tersebut.
                 </p>
               </div>
 
@@ -220,12 +221,22 @@ export default function Register({ requiresApproval = true, companies = [] }) {
               </ol>
 
               <form onSubmit={submit} className="space-y-5 rounded-2xl border bg-card p-5 shadow-sm sm:p-7">
+                <Field
+                  id="name"
+                  label="Nama lengkap"
+                  icon={User}
+                  autoFocus
+                  autoComplete="name"
+                  maxLength={150}
+                  value={data.name}
+                  onChange={(e) => setData('name', e.target.value)}
+                  error={errors.name}
+                />
                 <div className="grid gap-5 sm:grid-cols-2">
                   <Field
                     id="nik"
                     label="NIK / ID Karyawan"
                     icon={IdCard}
-                    autoFocus
                     autoComplete="off"
                     value={data.nik}
                     onChange={(e) => setData('nik', e.target.value)}
@@ -243,7 +254,7 @@ export default function Register({ requiresApproval = true, companies = [] }) {
                     error={errors.email}
                   />
                 </div>
-                <p className="-mt-2 text-xs text-muted-foreground">Email yang terdaftar di Talenta, nanti dipakai untuk login.</p>
+                <p className="-mt-2 text-xs text-muted-foreground">Email aktif Anda, nanti dipakai untuk login.</p>
                 <div className="grid gap-5 sm:grid-cols-2">
                   <SelectField
                     id="company_id"

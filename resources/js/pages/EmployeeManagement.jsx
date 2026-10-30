@@ -38,14 +38,14 @@ export default function EmployeeManagement({ employees = [], machines = [], comp
       <Head title="Employees" />
 
       <div className="space-y-6">
-        {/* Tab switcher */}
-        <div className="flex gap-2 border-b border-border">
+        {/* Tab switcher: di layar sempit bisa digeser horizontal, bukan meluber. */}
+        <div className="-mx-4 flex gap-1 overflow-x-auto border-b border-border px-4 [scrollbar-width:none] sm:mx-0 sm:gap-2 sm:px-0">
           {tabs.map(({ key, label, icon: Icon }) => (
             <Button
               key={key}
               variant="ghost"
               onClick={() => setTab(key)}
-              className={`gap-2 rounded-none border-b-2 ${
+              className={`shrink-0 gap-2 rounded-none border-b-2 ${
                 activeTab === key
                   ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
                   : 'border-transparent text-muted-foreground'

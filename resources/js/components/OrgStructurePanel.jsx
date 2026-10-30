@@ -133,7 +133,7 @@ export default function OrgStructurePanel({ companies = [] }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           Hierarki penempatan karyawan: <strong>Company → Brand → Outlet</strong>.
         </p>
@@ -154,13 +154,13 @@ export default function OrgStructurePanel({ companies = [] }) {
       {companies.map((company) => (
         <Card key={company.id}>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <Building2 className="h-5 w-5 text-indigo-500" />
-                {company.name}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="flex min-w-0 flex-wrap items-center gap-2">
+                <Building2 className="h-5 w-5 shrink-0 text-indigo-500" />
+                <span className="break-words">{company.name}</span>
                 <Badge variant="secondary">{company.brands?.length ?? 0} brand</Badge>
               </CardTitle>
-              <div className="flex gap-2">
+              <div className="flex shrink-0 gap-2">
                 <Button onClick={() => addBrand(company)} variant="outline" size="sm" className="gap-1">
                   <Plus className="h-3 w-3" /> Brand
                 </Button>
@@ -179,13 +179,13 @@ export default function OrgStructurePanel({ companies = [] }) {
             )}
             {(company.brands ?? []).map((brand) => (
               <div key={brand.id} className="rounded-lg border border-border p-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 font-medium">
-                    <Tag className="h-4 w-4 text-emerald-500" />
-                    {brand.name}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2 font-medium">
+                    <Tag className="h-4 w-4 shrink-0 text-emerald-500" />
+                    <span className="break-words">{brand.name}</span>
                     <Badge variant="secondary">{brand.outlets?.length ?? 0} outlet</Badge>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex shrink-0 gap-2">
                     <Button onClick={() => addOutlet(brand)} variant="outline" size="sm" className="gap-1">
                       <Plus className="h-3 w-3" /> Outlet
                     </Button>
@@ -198,12 +198,12 @@ export default function OrgStructurePanel({ companies = [] }) {
                   </div>
                 </div>
                 {(brand.outlets ?? []).length > 0 && (
-                  <ul className="mt-3 space-y-1 pl-6">
+                  <ul className="mt-3 space-y-1 pl-2 sm:pl-6">
                     {brand.outlets.map((outlet) => (
-                      <li key={outlet.id} className="flex items-center justify-between text-sm">
-                        <span className="flex items-center gap-2">
-                          <Store className="h-3.5 w-3.5 text-muted-foreground" />
-                          {outlet.name}
+                      <li key={outlet.id} className="flex items-center justify-between gap-2 text-sm">
+                        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                          <Store className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          <span className="break-words">{outlet.name}</span>
                           {outlet.latitude != null && outlet.longitude != null ? (
                             <a
                               href={`https://www.google.com/maps?q=${outlet.latitude},${outlet.longitude}`}
@@ -219,7 +219,7 @@ export default function OrgStructurePanel({ companies = [] }) {
                             </span>
                           )}
                         </span>
-                        <div className="flex gap-1">
+                        <div className="flex shrink-0 gap-1">
                           <Button
                             onClick={() => setOutletLocation(brand, outlet)}
                             variant="ghost"

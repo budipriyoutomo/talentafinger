@@ -122,6 +122,8 @@ class EmployeePresenceController extends Controller
                     'name' => $employee?->name,
                     'employee_code' => $employee?->employee_code,
                     'machine_id' => $p->machine_id,
+                    'outlet_id' => $p->outlet_id,
+                    'kiosk_id' => $p->kiosk_id,
                     // Tempat absen foto/QR (log mesin memakai machineIdentities).
                     'place' => $p->machine_id ? null : [
                         'outlet_name' => $outlet?->name,
@@ -152,6 +154,69 @@ class EmployeePresenceController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'name', 'employee_code', 'biometric_id']),
         ]);
+    }
+
+    /**
+     * Raw log satu orang pada satu tanggal, untuk popup Detail. Sengaja SEMUA
+     * tempat & SEMUA status (termasuk duplikat/ditolak) supaya terlihat utuh
+     * apa yang masuk ke server; scope akses tetap lewat visibleTo().
+     *
+     * Orangnya dikenali lewat employee_id (karyawan dikenal: log foto/QR +
+     * log mesin via PIN-nya) atau lewat PIN saja (PIN tak dikenal).
+     */
+    public function logs(Request $request)
+    {
+        $this->authorize('viewAny', AttendanceLog::class);
+
+        $data = $request->validate([
+            'date' => ['required', 'date_format:Y-m-d'],
+            'employee_id' => ['nullable', 'uuid', 'required_without:pin'],
+            'pin' => ['nullable', 'string', 'max:100', 'required_without:employee_id'],
+        ]);
+
+        $user = $request->user();
+        $employee = ! empty($data['employee_id'])
+            ? Employee::whereKey($data['employee_id'])->first(['id', 'biometric_id'])
+            : null;
+
+        $logs = AttendanceLog::visibleTo($user)
+            ->with(['machine.outlet', 'outlet', 'kiosk:id,name'])
+            ->whereDate('timestamp', $data['date'])
+            ->where(function ($q) use ($data, $employee) {
+                if ($employee) {
+                    $q->where('employee_id', $employee->id)
+                        ->when($employee->biometric_id, fn ($m) => $m->orWhere(fn ($mm) => $mm
+                            ->whereNull('employee_id')
+                            ->where('biometric_id_lokal', $employee->biometric_id)));
+                } elseif (! empty($data['employee_id'])) {
+                    $q->whereRaw('1 = 0');
+                } else {
+                    $q->whereNull('employee_id')->where('biometric_id_lokal', $data['pin']);
+                }
+            })
+            ->orderBy('timestamp')
+            ->orderBy('created_at')
+            ->get()
+            ->map(fn (AttendanceLog $log) => [
+                'id' => $log->id,
+                'timestamp' => $log->timestamp?->format('Y-m-d H:i:s'),
+                'received_at' => $log->created_at?->format('Y-m-d H:i:s'),
+                'source' => $log->source,
+                'pin' => $log->biometric_id_lokal,
+                'machine_id' => $log->machine_id,
+                'machine_name' => $log->machine?->name ?: $log->machine?->serial_number,
+                'serial_number' => $log->machine?->serial_number,
+                'outlet_id' => $log->machine_id ? $log->machine?->outlet_id : $log->outlet_id,
+                'outlet_name' => $log->machine_id ? $log->machine?->outlet?->name : $log->outlet?->name,
+                'kiosk_id' => $log->kiosk_id,
+                'kiosk_name' => $log->kiosk?->name,
+                'status' => $log->status_sync,
+                'counted' => ! in_array($log->status_sync, self::EXCLUDED_STATUSES, true),
+                'error_message' => $log->error_message,
+                'payload_raw' => $log->payload_raw,
+            ]);
+
+        return response()->json(['logs' => $logs]);
     }
 
     /** Identitas mesin yang ditampilkan: sama dengan kolom di halaman Machines. */

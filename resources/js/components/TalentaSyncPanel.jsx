@@ -350,7 +350,7 @@ export default function TalentaSyncPanel({ employees = [] }) {
                 terisi tidak pernah ditimpa otomatis.
               </CardDescription>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex w-full flex-wrap gap-2 sm:w-auto">
               <Button onClick={() => start('both')} disabled={running || starting} className="gap-2">
                 {running || starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                 {running ? 'Sedang berjalan...' : 'Tarik & Sync'}
@@ -367,7 +367,7 @@ export default function TalentaSyncPanel({ employees = [] }) {
         <CardContent className="space-y-2 text-sm">
           {[summary?.last_pull, summary?.last_sync].map((run, i) => (
             <div key={i} className="flex flex-wrap items-center gap-2">
-              <span className="w-28 font-medium">{i === 0 ? 'Tarik terakhir' : 'Sync terakhir'}</span>
+              <span className="w-full font-medium sm:w-28">{i === 0 ? 'Tarik terakhir' : 'Sync terakhir'}</span>
               {run ? (
                 <>
                   <Badge variant={RUN_STATUS_VARIANT[run.status] ?? 'outline'}>{run.status}</Badge>
@@ -500,10 +500,10 @@ function LinkDialog({ row, employees, onClose, onSubmit }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 p-2 backdrop-blur-sm sm:p-4"
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="mt-16 w-full max-w-xl rounded-2xl border bg-card text-card-foreground shadow-2xl">
+      <div className="mt-4 w-full sm:mt-16 max-w-xl rounded-2xl border bg-card text-card-foreground shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-border p-4">
           <div>
             <h3 className="font-semibold">Tautkan ke karyawan lokal</h3>

@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Prunable;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
-#[Fillable(['name', 'email', 'password', 'must_change_password', 'role', 'is_active', 'last_login_at', 'last_login_ip', 'employee_id', 'registration_status', 'registered_at', 'registration_outlet_id'])]
+#[Fillable(['name', 'email', 'password', 'must_change_password', 'role', 'is_active', 'last_login_at', 'last_login_ip', 'employee_id', 'registration_status', 'registered_at', 'registration_outlet_id', 'registration_nik'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -267,6 +267,41 @@ class User extends Authenticatable
         }
     }
 
+    /** Pendaftar tanpa data karyawan (karyawannya baru dibuat saat disetujui)? */
+    public function isNewEmployeeRegistration(): bool
+    {
+        return $this->employee_id === null && filled($this->registration_nik);
+    }
+
+    /** NIK isian pendaftar baru keburu dipakai karyawan lain (mis. hasil sync Talenta)? */
+    public function registrationNikTaken(): bool
+    {
+        return $this->isNewEmployeeRegistration()
+            && Employee::whereRaw('TRIM(employee_code) = ?', [$this->registration_nik])->exists();
+    }
+
+    /**
+     * Pendaftaran tanpa data karyawan disetujui -> buat karyawannya dari isian
+     * form (nama, NIK, email) lalu tautkan ke akun ini. Panggil di dalam
+     * transaksi, sebelum linkRegistrationOutlet().
+     */
+    public function createRegistrationEmployee(): void
+    {
+        if (! $this->isNewEmployeeRegistration()) {
+            return;
+        }
+
+        $employee = Employee::create([
+            'name' => $this->name,
+            'employee_code' => $this->registration_nik,
+            'email' => $this->email,
+            'is_active' => true,
+        ]);
+
+        $this->forceFill(['employee_id' => $employee->id, 'registration_nik' => null])->save();
+        $this->setRelation('employee', $employee);
+    }
+
     /**
      * Pendaftaran yang boleh dilihat & diputus penyetuju ini: karyawannya punya
      * outlet dalam scope-nya, ATAU outlet pilihan pendaftar ada dalam scope-nya.
@@ -275,9 +310,14 @@ class User extends Authenticatable
     {
         $outletIds = $reviewer->scopedOutletIds();
 
+        // Tanpa batas (admin): termasuk pendaftar yang belum punya data karyawan.
+        if ($outletIds === null) {
+            return $query;
+        }
+
         return $query->where(fn ($q) => $q
             ->whereIn('employee_id', Employee::visibleTo($reviewer)->select('id'))
-            ->when($outletIds !== null, fn ($w) => $w->orWhereIn('registration_outlet_id', $outletIds)));
+            ->orWhereIn('registration_outlet_id', $outletIds));
     }
 
     /** Akun hasil registrasi mandiri yang belum selesai (belum verifikasi / belum disetujui / ditolak). */

@@ -56,6 +56,7 @@ class RegistrationTest extends TestCase
     private function register(array $overrides = [])
     {
         return $this->from('/register')->post('/register', [
+            'name' => 'Siti Aminah',
             'nik' => 'K001',
             'email' => 'siti@contoh.com',
             'company_id' => $this->company->id,
@@ -184,6 +185,112 @@ class RegistrationTest extends TestCase
 
         $this->assertSame(1, User::count());
         Notification::assertSentTimes(VerifyRegistration::class, 1);
+    }
+
+    public function test_nama_wajib_diisi(): void
+    {
+        $this->register(['name' => ''])->assertSessionHasErrors('name');
+        $this->assertSame(0, User::count());
+    }
+
+    public function test_data_belum_ada_tetap_bisa_daftar_dan_karyawan_dibuat_saat_disetujui(): void
+    {
+        // Wajib persetujuan dimatikan pun, pendaftar baru tetap lewat penyetuju.
+        config(['auth.registration_require_approval' => false]);
+        $employees = Employee::count();
+
+        $this->register(['name' => ' Rina Baru ', 'nik' => 'N900', 'email' => 'Rina@Contoh.com'])
+            ->assertSessionHas('success');
+
+        $user = User::where('email', 'rina@contoh.com')->sole();
+        $this->assertNull($user->employee_id);
+        $this->assertSame('N900', $user->registration_nik);
+        $this->assertSame('Rina Baru', $user->name);
+        $this->assertSame($employees, Employee::count());
+
+        $this->completeRegistration($user)->assertRedirect('/login');
+        $user->refresh();
+        $this->assertSame(User::REG_PENDING, $user->registration_status);
+        $this->assertFalse($user->is_active);
+
+        $reviewer = $this->reviewer();
+        $this->actingAs($reviewer)->get('/registrations')
+            ->assertInertia(fn ($page) => $page->component('Registrations')
+                ->has('registrations', 1)
+                ->where('registrations.0.nik', 'N900')
+                ->where('registrations.0.is_new_employee', true)
+                ->where('registrations.0.employee_active', true));
+
+        $this->actingAs($reviewer)->postJson("/api/registrations/{$user->id}/approve")->assertOk();
+
+        $user->refresh();
+        $employee = $user->employee;
+        $this->assertNotNull($employee);
+        $this->assertSame('Rina Baru', $employee->name);
+        $this->assertSame('N900', $employee->employee_code);
+        $this->assertSame('rina@contoh.com', $employee->email);
+        $this->assertTrue($employee->is_active);
+        $this->assertTrue($employee->outlets()->whereKey($this->outlet->id)->exists());
+        $this->assertNull($user->registration_nik);
+        $this->assertTrue($user->is_active);
+
+        auth()->logout();
+        $this->login('rina@contoh.com')->assertRedirect();
+        $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_data_cocok_sebagian_diabaikan_supaya_nik_orang_lain_tak_dibajak(): void
+    {
+        // NIK milik Siti dengan email lain, dan email Siti dengan NIK lain.
+        $this->register(['nik' => 'K001', 'email' => 'penyusup@contoh.com'])->assertSessionHas('success');
+        $this->register(['nik' => 'N999', 'email' => 'siti@contoh.com'])->assertSessionHas('success');
+
+        $this->assertSame(0, User::count());
+        Notification::assertNothingSent();
+    }
+
+    public function test_admin_melihat_pendaftar_baru_dan_nik_bentrok_ditolak_saat_disetujui(): void
+    {
+        $this->register(['nik' => 'N900', 'email' => 'rina@contoh.com']);
+        $user = User::where('email', 'rina@contoh.com')->sole();
+        $this->completeRegistration($user);
+
+        $admin = User::create(['name' => 'Admin', 'email' => 'admin@adms.local', 'password' => 'x', 'role' => Role::ADMIN]);
+        $this->actingAs($admin)->get('/registrations')
+            ->assertInertia(fn ($page) => $page->has('registrations', 1));
+
+        // Sementara menunggu, NIK itu masuk data karyawan (mis. sync Talenta).
+        $this->employee('Rina Talenta', 'N900', 'rina.lain@contoh.com');
+        $this->actingAs($admin)->postJson("/api/registrations/{$user->id}/approve")->assertStatus(422);
+        $this->assertSame(User::REG_PENDING, $user->fresh()->registration_status);
+    }
+
+    public function test_salah_ketik_nik_lalu_daftar_ulang_dengan_email_sama_mengganti_pendaftaran_lama(): void
+    {
+        $this->register(['nik' => 'N90', 'email' => 'rina@contoh.com']);
+        $this->register(['nik' => 'N900', 'email' => 'rina@contoh.com']);
+
+        $user = User::where('email', 'rina@contoh.com')->sole();
+        $this->assertSame('N900', $user->registration_nik);
+    }
+
+    public function test_admin_mengaktifkan_pendaftar_baru_dari_form_user_membuat_karyawannya(): void
+    {
+        $this->register(['nik' => 'N900', 'email' => 'rina@contoh.com']);
+        $user = User::where('email', 'rina@contoh.com')->sole();
+        $admin = User::create(['name' => 'Admin', 'email' => 'admin@adms.local', 'password' => 'x', 'role' => Role::ADMIN]);
+
+        $this->actingAs($admin)->putJson("/api/users/{$user->id}", [
+            'name' => 'Rina',
+            'email' => $user->email,
+            'role' => Role::EMPLOYEE,
+            'is_active' => true,
+        ])->assertOk();
+
+        $user->refresh();
+        $this->assertTrue($user->is_active);
+        $this->assertSame('N900', $user->employee?->employee_code);
+        $this->assertTrue($user->employee->outlets()->whereKey($this->outlet->id)->exists());
     }
 
     public function test_rate_limit_per_nik_dihitung_per_ip(): void

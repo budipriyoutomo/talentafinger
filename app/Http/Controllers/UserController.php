@@ -89,7 +89,9 @@ class UserController extends Controller
             'password' => ['nullable', 'string', Password::defaults()],
             'role' => ['required', 'string', 'exists:roles,key'],
             'is_active' => 'sometimes|boolean',
-            ...$this->employeeRules($id),
+            // Pendaftar tanpa data karyawan boleh tanpa employee_id: karyawannya
+            // dibuat saat disetujui (lihat createRegistrationEmployee di bawah).
+            ...$this->employeeRules($id, required: ! $user->isNewEmployeeRegistration()),
             ...$this->scopeRules(),
         ]);
 
@@ -118,6 +120,9 @@ class UserController extends Controller
         // Mengaktifkan akun pendaftar (belum verifikasi / menunggu / ditolak)
         // dari form ini = menyetujuinya; tanpa ini login tetap tertahan statusnya.
         $approvingRegistration = $user->is_active && $user->isRegistrationIncomplete();
+        if ($approvingRegistration && empty($data['employee_id']) && $user->registrationNikTaken()) {
+            return response()->json(['message' => "NIK {$user->registration_nik} sudah dipakai karyawan lain. Pilih karyawan itu di kolom Karyawan, atau tolak pendaftarannya."], 422);
+        }
         if ($approvingRegistration) {
             $user->forceFill([
                 'registration_status' => null,
@@ -128,6 +133,10 @@ class UserController extends Controller
         // Tautan karyawan: wajib untuk role employee, opsional untuk role lain
         // (user yang juga karyawan -> ikut dapat izin absen foto / QR).
         $user->employee_id = $data['employee_id'] ?? null;
+        if ($user->employee_id) {
+            // Admin menautkan karyawan yang sudah ada: NIK isian tak dipakai lagi.
+            $user->registration_nik = null;
+        }
         // Reset password oleh admin: sesi lama user itu otomatis keluar
         // (AuthenticateSession) dan ia wajib mengganti password sementara ini.
         // Admin yang mengganti password-nya SENDIRI di sini tidak dipaksa.
@@ -138,6 +147,7 @@ class UserController extends Controller
         $user->save();
 
         if ($approvingRegistration) {
+            $user->createRegistrationEmployee();
             $user->linkRegistrationOutlet();
         }
 
@@ -329,12 +339,12 @@ class UserController extends Controller
      * Akun ber-role `employee` wajib ditautkan ke tepat satu karyawan; role lain
      * boleh (opsional). Satu karyawan hanya boleh punya satu akun.
      */
-    private function employeeRules(?string $ignoreUserId = null): array
+    private function employeeRules(?string $ignoreUserId = null, bool $required = true): array
     {
         return [
             'employee_id' => [
                 'nullable',
-                'required_if:role,'.Role::EMPLOYEE,
+                ...($required ? ['required_if:role,'.Role::EMPLOYEE] : []),
                 'uuid',
                 'exists:employees,id',
                 Rule::unique('users', 'employee_id')->ignore($ignoreUserId),

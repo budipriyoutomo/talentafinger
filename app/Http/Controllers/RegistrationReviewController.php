@@ -16,7 +16,8 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
  * penyetuju hanya melihat & memutus pendaftar yang karyawannya punya minimal
  * satu outlet dalam scope-nya, atau yang memilih outlet dalam scope-nya saat
  * mendaftar (User::registrationsVisibleTo). Disetujui -> karyawan ditautkan
- * ke outlet pilihannya.
+ * ke outlet pilihannya; pendaftar tanpa data karyawan dibuatkan karyawan baru
+ * dulu dari isian form-nya.
  */
 class RegistrationReviewController extends Controller
 {
@@ -42,7 +43,9 @@ class RegistrationReviewController extends Controller
                 'id' => $u->id,
                 'name' => $u->name,
                 'email' => $u->email,
-                'nik' => $u->employee?->employee_code,
+                'nik' => $u->employee?->employee_code ?? $u->registration_nik,
+                // Belum ada di data karyawan: karyawannya dibuat saat disetujui.
+                'is_new_employee' => $u->isNewEmployeeRegistration(),
                 'job_position' => $u->employee?->job_position,
                 'outlets' => $u->employee?->outlets->pluck('name')->all() ?? [],
                 // Outlet pilihan pendaftar; is_new = karyawan belum tertaut ke
@@ -53,7 +56,7 @@ class RegistrationReviewController extends Controller
                     'company' => $u->registrationOutlet->brand?->company?->name,
                     'is_new' => ! $u->employee?->outlets->contains('id', $u->registration_outlet_id),
                 ] : null,
-                'employee_active' => (bool) $u->employee?->is_active,
+                'employee_active' => $u->isNewEmployeeRegistration() || (bool) $u->employee?->is_active,
                 'registered_at' => $u->registered_at?->format('Y-m-d H:i'),
                 'email_verified_at' => $u->email_verified_at?->format('Y-m-d H:i'),
                 'reviewed_at' => $u->reviewed_at?->format('Y-m-d H:i'),
@@ -75,7 +78,11 @@ class RegistrationReviewController extends Controller
     {
         $user = $this->findPending($request, $id);
 
-        if (! $user->employee?->is_active) {
+        if ($user->isNewEmployeeRegistration()) {
+            if ($user->registrationNikTaken()) {
+                return response()->json(['message' => "NIK {$user->registration_nik} sudah dipakai karyawan lain. Tolak pendaftarannya, lalu minta pendaftar memakai NIK & email yang terdata."], 422);
+            }
+        } elseif (! $user->employee?->is_active) {
             return response()->json(['message' => 'Karyawan ini sudah nonaktif. Tolak pendaftarannya.'], 422);
         }
 
@@ -88,6 +95,7 @@ class RegistrationReviewController extends Controller
                 'rejection_reason' => null,
             ])->save();
 
+            $user->createRegistrationEmployee();
             $user->linkRegistrationOutlet();
         });
 

@@ -63,6 +63,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/attendance-logs', [DashboardController::class, 'attendanceLogs']);
     // Laporan: karyawan absen di mesin mana saja + identitas mesinnya.
     Route::get('/employee-presence', [EmployeePresenceController::class, 'index']);
+    // Raw log satu orang di satu tanggal (popup Detail).
+    Route::get('/employee-presence/logs', [EmployeePresenceController::class, 'logs']);
     Route::get('/employee-management', [DashboardController::class, 'employeeManagement']);
     Route::get('/fingerprints', [DashboardController::class, 'fingerprints']);
     Route::get('/settings', [DashboardController::class, 'settings']);
