@@ -146,3 +146,4 @@ Route::middleware('can:role.manage')->group(function () {
 
 // ===== Dashboard =====
 Route::get('/dashboard-stats', [DashboardController::class, 'stats']);
+Route::get('/dashboard-machines', [DashboardController::class, 'heartbeat']);

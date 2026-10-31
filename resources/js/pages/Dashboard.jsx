@@ -12,14 +12,17 @@ export default function Dashboard({ machines = [], stats = {} }) {
   const [stats_, setStats] = useState(stats)
 
   useEffect(() => {
+    // Respons error (403/419/500) berisi {message}, bukan data — jangan sampai
+    // menimpa state (machineList.filter akan crash).
+    const getJson = url => fetch(url, { headers: { Accept: 'application/json' } })
+      .then(res => (res.ok ? res.json() : Promise.reject(new Error(`${url} -> ${res.status}`))))
+
     const interval = setInterval(() => {
-      fetch('/api/machines')
-        .then(res => res.json())
-        .then(data => setMachineList(data))
+      getJson('/api/dashboard-machines')
+        .then(data => Array.isArray(data) && setMachineList(data))
         .catch(err => console.error(err))
 
-      fetch('/api/dashboard-stats')
-        .then(res => res.json())
+      getJson('/api/dashboard-stats')
         .then(data => setStats(data))
         .catch(err => console.error(err))
     }, 5000)

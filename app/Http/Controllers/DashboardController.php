@@ -35,15 +35,30 @@ class DashboardController extends Controller
             return redirect($user->homePath());
         }
 
-        // Status LIVE dari last_seen_at; kolom `status` di DB basi (lihat /api/machines).
-        $machines = Machine::visibleTo($user)->get()->each(function ($m) {
-            $m->status = $m->isOnline() ? 'online' : 'offline';
-        });
-
         return Inertia::render('Dashboard', [
-            'machines' => $machines,
+            'machines' => $this->heartbeatMachines($user),
             'stats' => $this->buildStats($user),
         ]);
+    }
+
+    /**
+     * JSON heartbeat mesin untuk polling dashboard (GET /api/dashboard-machines).
+     * Dashboard tak memakai /api/machines karena endpoint itu butuh machine.view,
+     * sedangkan dashboard terbuka untuk semua role non-karyawan.
+     */
+    public function heartbeat(Request $request)
+    {
+        abort_if($request->user()->isEmployee(), 403);
+
+        return $this->heartbeatMachines($request->user());
+    }
+
+    /** Mesin dalam scope user + status LIVE dari last_seen_at (kolom `status` di DB basi). */
+    private function heartbeatMachines(User $user)
+    {
+        return Machine::visibleTo($user)->get()->each(function ($m) {
+            $m->status = $m->isOnline() ? 'online' : 'offline';
+        });
     }
 
     /** JSON statistik untuk polling dashboard (GET /api/dashboard-stats). */
