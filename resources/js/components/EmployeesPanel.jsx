@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { Trash2, Plus, Pencil, Fingerprint, Send, X, SlidersHorizontal, ServerOff, UserPlus, UserCheck } from 'lucide-react'
+import { Trash2, Plus, Pencil, Fingerprint, Send, X, SlidersHorizontal, ServerOff, UserPlus, UserCheck, UserX } from 'lucide-react'
 import { usePermissions } from '@/lib/permissions'
 import CreateEmployeeUsersDialog from '@/components/CreateEmployeeUsersDialog'
 import EmployeeFingerprintDialog from '@/components/EmployeeFingerprintDialog'
@@ -201,6 +201,45 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
     () => filteredEmployees.filter((e) => !e.is_active && e.biometric_id),
     [filteredEmployees]
   )
+
+  // Kandidat "Set Nonaktif" massal: karyawan AKTIF yang lolos filter. Hanya
+  // ditawarkan saat filter Talenta = "Tidak ada di Talenta".
+  const deactivatableFiltered = useMemo(
+    () => (talentaFilter === 'unlinked' ? filteredEmployees.filter((e) => e.is_active) : []),
+    [filteredEmployees, talentaFilter]
+  )
+
+  const bulkDeactivate = () => {
+    const targets = deactivatableFiltered
+    confirmToast({
+      message: `Set nonaktif ${targets.length} karyawan?`,
+      description: 'Karyawan aktif yang tidak ada di Talenta dan lolos filter saat ini.',
+      confirmLabel: 'Set Nonaktif',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          const res = await fetch('/api/employees/bulk-deactivate', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-CSRF-TOKEN': csrf(),
+            },
+            body: JSON.stringify({ employee_ids: targets.map((e) => e.id) }),
+          })
+          const body = await res.json().catch(() => ({}))
+          if (res.ok) {
+            toast.success(`${body.updated ?? targets.length} karyawan dinonaktifkan`)
+            router.reload({ only: ['employees'] })
+          } else {
+            toast.error(body.error || body.message || 'Gagal menonaktifkan karyawan')
+          }
+        } catch (err) {
+          console.error('Failed to bulk deactivate employees:', err)
+        }
+      },
+    })
+  }
 
   // Hanya karyawan (yang lolos filter) dan punya template di DB yang bisa disebar.
   const selectableIds = useMemo(
@@ -563,6 +602,17 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
             >
               <ServerOff className="h-4 w-4" />
               Hapus dari Mesin ({removableFiltered.length} nonaktif)
+            </Button>
+          )}
+          {canManage && deactivatableFiltered.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={bulkDeactivate}
+              className="gap-2"
+              title="Karyawan aktif yang tidak ada di Talenta dan lolos filter"
+            >
+              <UserX className="h-4 w-4" />
+              Set Nonaktif ({deactivatableFiltered.length})
             </Button>
           )}
           {canManageUsers && accountReadyFiltered.length > 0 && (

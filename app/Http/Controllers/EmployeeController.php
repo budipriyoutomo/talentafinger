@@ -115,6 +115,35 @@ class EmployeeController extends Controller
     }
 
     /**
+     * Bulk set nonaktif (halaman Employees, filter "Tidak ada di Talenta").
+     * Semua id wajib dalam wewenang user; satu saja di luar = ditolak semua.
+     */
+    public function bulkDeactivate(Request $request)
+    {
+        $data = $request->validate([
+            'employee_ids' => 'required|array|min:1',
+            'employee_ids.*' => 'required|uuid',
+        ]);
+
+        $user = $request->user();
+        $employeeIds = array_values(array_unique($data['employee_ids']));
+        $employees = Employee::visibleTo($user)->whereIn('id', $employeeIds)->get();
+
+        if ($employees->count() !== count($employeeIds)
+            || $employees->contains(fn (Employee $e) => $user->cannot('update', $e))) {
+            return response()->json(['ok' => false, 'error' => 'Ada karyawan di luar wewenang Anda.'], 403);
+        }
+
+        $targets = $employees->where('is_active', true);
+        foreach ($targets as $employee) {
+            $employee->update(['is_active' => false]);
+            AuditLog::record('employee.deactivated', $employee, ['is_active' => [true, false]]);
+        }
+
+        return response()->json(['ok' => true, 'updated' => $targets->count()]);
+    }
+
+    /**
      * Tombol "Hapus dari Mesin" (mis. karyawan resign): hapus user + sidik jari
      * dari mesin terpilih via TCP 4370 di background, 1 job per mesin. Status
      * tiap job dipolling di /api/fingerprint/delete-jobs/{id}.

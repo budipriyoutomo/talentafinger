@@ -68,6 +68,7 @@ Route::delete('/employees/{id}/fingerprints', [FingerprintController::class, 'de
 // Impor didaftarkan SEBELUM rute {id} agar tak tertangkap sebagai id.
 Route::post('/employees/import-from-machine', [EmployeeController::class, 'importFromMachine']);
 Route::post('/employees/remove-from-machines', [EmployeeController::class, 'removeFromMachines']);
+Route::post('/employees/bulk-deactivate', [EmployeeController::class, 'bulkDeactivate']);
 Route::get('/employees', [EmployeeController::class, 'index']);
 Route::post('/employees', [EmployeeController::class, 'store']);
 Route::put('/employees/{id}', [EmployeeController::class, 'update']);
