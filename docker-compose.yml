@@ -122,8 +122,11 @@ services:
         condition: service_healthy
       vpn:
         condition: service_healthy
+    # Image runtime (php-fpm-bookworm) TIDAK punya procps -> pgrep tak ada dan
+    # healthcheck selalu gagal (unhealthy). queue:work berjalan sebagai PID 1
+    # (entrypoint memakai exec), jadi cukup cek cmdline PID 1.
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'queue:work' >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "grep -q 'queue:work' /proc/1/cmdline || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
