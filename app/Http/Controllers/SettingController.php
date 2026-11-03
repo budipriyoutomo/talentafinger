@@ -93,9 +93,22 @@ class SettingController extends Controller
         try {
             AttendancePhoto::testS3($data);
         } catch (\Throwable $e) {
+            $message = 'Koneksi gagal: ' . $this->storageError($e);
+
+            // Key valid tapi bucket tak ada: tunjukkan bucket yang benar-benar dimiliki key ini.
+            if (str_contains($message, 'NoSuchBucket')) {
+                try {
+                    $buckets = AttendancePhoto::visibleS3Buckets($data);
+                    $message .= "\nBucket yang terlihat oleh Access Key ini: "
+                        . ($buckets ? implode(', ', $buckets) : '(tidak ada; buat bucket dulu di panel, atau key ini milik user lain)');
+                } catch (\Throwable) {
+                    // Daftar bucket hanya pelengkap; pesan utama tetap dikirim.
+                }
+            }
+
             return response()->json([
                 'success' => false,
-                'message' => 'Koneksi gagal: ' . $this->storageError($e),
+                'message' => $message,
             ], 422);
         }
 

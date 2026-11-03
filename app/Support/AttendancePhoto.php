@@ -168,6 +168,26 @@ final class AttendancePhoto
     }
 
     /**
+     * Nama bucket yang terlihat oleh key ini (ListBuckets). Untuk memperjelas
+     * error NoSuchBucket: salah ketik nama, atau key milik user lain di panel.
+     */
+    public static function visibleS3Buckets(array $overrides = []): array
+    {
+        $config = self::s3Config($overrides);
+
+        $client = new \Aws\S3\S3Client([
+            'version' => 'latest',
+            'region' => $config['region'] ?: 'us-east-1',
+            'endpoint' => $config['endpoint'],
+            'use_path_style_endpoint' => (bool) ($config['use_path_style_endpoint'] ?? true),
+            'credentials' => ['key' => $config['key'], 'secret' => $config['secret']],
+            'http' => ['connect_timeout' => 5, 'timeout' => 15],
+        ]);
+
+        return array_column($client->listBuckets()['Buckets'] ?? [], 'Name');
+    }
+
+    /**
      * Uji kredensial Object Storage: tulis, baca, lalu hapus satu file kecil.
      * Melempar exception berisi pesan dari server S3 bila gagal.
      */
