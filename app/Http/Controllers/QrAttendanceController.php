@@ -189,7 +189,7 @@ class QrAttendanceController extends Controller
                 ]);
             } catch (\Throwable $e) {
                 // Jangan tinggalkan foto yatim di disk bila log gagal tersimpan.
-                Storage::disk(AttendancePhoto::DISK)->delete($path);
+                AttendancePhoto::delete($path);
                 throw $e;
             }
 

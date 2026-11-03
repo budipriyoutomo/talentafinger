@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Settings as SettingsIcon, Plug, Cpu, SlidersHorizontal, Send, Clock, Save, Loader2, CheckCircle2, AlertCircle, UserPlus } from 'lucide-react'
+import { Settings as SettingsIcon, Plug, Cpu, SlidersHorizontal, Send, Clock, Save, Loader2, CheckCircle2, AlertCircle, UserPlus, HardDrive, Wifi } from 'lucide-react'
 
 function csrf() {
   return document.querySelector('meta[name="csrf-token"]').content
@@ -22,6 +22,11 @@ const GROUP_META = {
     title: 'Absensi (Auto-kirim & Absen Foto)',
     icon: Send,
     description: 'Jadwal pengiriman otomatis absensi ke Talenta (pengiriman manual tetap tersedia di halaman Logs), serta saklar & radius absen foto.',
+  },
+  storage: {
+    title: 'Penyimpanan Foto Absen',
+    icon: HardDrive,
+    description: 'Tempat menyimpan foto absen foto & QR: disk server atau Object Storage IDCloudHost (S3).',
   },
   auth: {
     title: 'Registrasi Akun Karyawan',
@@ -45,7 +50,7 @@ const GROUP_META = {
   },
 }
 
-const GROUP_ORDER = ['talenta', 'attendance', 'auth', 'machine', 'adms', 'general']
+const GROUP_ORDER = ['talenta', 'attendance', 'storage', 'auth', 'machine', 'adms', 'general']
 
 export default function AppSettingsPanel({ groups = {} }) {
   // Nilai form: { key: value }. Kosongkan dulu lalu isi dari props.
@@ -131,6 +136,42 @@ export default function AppSettingsPanel({ groups = {} }) {
       setSaved(next)
     } finally {
       setSaving(false)
+    }
+  }
+
+  // Tes Koneksi Object Storage pakai nilai form saat ini (boleh belum disimpan).
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState(null)
+
+  const testStorage = async () => {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const prefix = 'filesystems.disks.idcloudhost.'
+      const payload = {}
+      ;['endpoint', 'region', 'bucket', 'key', 'secret', 'use_path_style_endpoint'].forEach((f) => {
+        const v = form[prefix + f]
+        if (v !== undefined && v !== '') payload[f] = v
+      })
+
+      const res = await fetch('/api/settings/storage-test', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'X-CSRF-TOKEN': csrf(),
+        },
+        body: JSON.stringify(payload),
+      })
+      const b = await res.json().catch(() => ({}))
+      const message = b?.errors
+        ? Object.values(b.errors).flat().join('\n')
+        : b.message || (res.status === 429 ? 'Terlalu sering, coba lagi sebentar.' : 'Tes koneksi gagal.')
+      setTestResult({ ok: res.ok && b.success, message })
+    } catch (e) {
+      setTestResult({ ok: false, message: 'Tes koneksi gagal: server tidak merespons.' })
+    } finally {
+      setTesting(false)
     }
   }
 
@@ -230,6 +271,33 @@ export default function AppSettingsPanel({ groups = {} }) {
                   </div>
                 </div>
               ))}
+              {g === 'storage' && (
+                <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-start sm:gap-4">
+                  <Button variant="outline" onClick={testStorage} disabled={testing} className="gap-2 shrink-0">
+                    {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wifi className="h-4 w-4" />}
+                    Tes Koneksi
+                  </Button>
+                  <p className="text-xs text-muted-foreground sm:pt-2.5">
+                    {testResult ? (
+                      <span
+                        className={`flex items-start gap-1 text-sm whitespace-pre-line ${
+                          testResult.ok ? 'text-emerald-600' : 'text-red-600 dark:text-red-400'
+                        }`}
+                      >
+                        {testResult.ok ? (
+                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                        ) : (
+                          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                        )}
+                        {testResult.message}
+                      </span>
+                    ) : (
+                      'Menulis, membaca, lalu menghapus satu file kecil di bucket memakai isian di atas (tak perlu disimpan dulu). '
+                      + 'Secret Key kosong = pakai yang tersimpan.'
+                    )}
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         )

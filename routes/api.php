@@ -117,6 +117,7 @@ Route::post('/attendance-logs/{id}/review', [ManualAttendanceController::class, 
 
 // ===== Pengaturan aplikasi =====
 Route::put('/settings', [SettingController::class, 'update']);
+Route::post('/settings/storage-test', [SettingController::class, 'testStorage'])->middleware('throttle:10,1');
 // Master sumber absensi: sumber mana yang di-sync ke Talenta.
 Route::put('/attendance-sources/{id}', [AttendanceSourceController::class, 'update'])->whereNumber('id');
 

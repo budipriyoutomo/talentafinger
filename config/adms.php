@@ -11,4 +11,8 @@ return [
 
     // Port SDK default mesin ZKTeco.
     'sdk_port' => (int) env('ADMS_SDK_PORT', 4370),
+
+    // Disk penyimpanan foto absen (absen foto & QR): 'local' (storage/app/private)
+    // atau 'idcloudhost' (Object Storage S3). Foto lama di 'local' tetap terbaca.
+    'photo_disk' => env('ATTENDANCE_PHOTO_DISK', 'local'),
 ];

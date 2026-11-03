@@ -236,6 +236,67 @@ class SettingSeeder extends Seeder
                 'default' => '180',
             ],
 
+            // ===== Penyimpanan foto absen (Object Storage IDCloudHost) =====
+            // Key S3 = path config disk 'idcloudhost' (config/filesystems.php),
+            // jadi field kosong otomatis kembali ke nilai IDCH_S3_* di .env.
+            [
+                'key' => 'attendance.photo_s3_enabled',
+                'group' => 'storage',
+                'type' => 'boolean',
+                'label' => 'Simpan Foto di Object Storage',
+                'description' => 'Aktif: foto absen BARU disimpan ke Object Storage IDCloudHost; mati: ke disk server. Foto lama tetap '
+                    . 'terbuka. Bucket/key/secret belum lengkap = tetap ke disk server. Pindah foto lama: attendance:migrate-photos',
+                'default' => config('adms.photo_disk') === 'idcloudhost' ? '1' : '0',
+            ],
+            [
+                'key' => 'filesystems.disks.idcloudhost.endpoint',
+                'group' => 'storage',
+                'type' => 'text',
+                'label' => 'Endpoint S3',
+                'description' => 'Endpoint Object Storage IDCloudHost, lihat di panel (mis. https://is3.cloudhost.id).',
+                'default' => config('filesystems.disks.idcloudhost.endpoint'),
+            ],
+            [
+                'key' => 'filesystems.disks.idcloudhost.region',
+                'group' => 'storage',
+                'type' => 'text',
+                'label' => 'Region',
+                'description' => 'Region bucket sesuai panel IDCloudHost. Bila tak disebutkan, biarkan us-east-1.',
+                'default' => config('filesystems.disks.idcloudhost.region'),
+            ],
+            [
+                'key' => 'filesystems.disks.idcloudhost.bucket',
+                'group' => 'storage',
+                'type' => 'text',
+                'label' => 'Nama Bucket',
+                'description' => 'Buat bucket PRIVAT (bukan public): foto hanya dibuka lewat aplikasi setelah cek hak akses.',
+                'default' => config('filesystems.disks.idcloudhost.bucket'),
+            ],
+            [
+                'key' => 'filesystems.disks.idcloudhost.key',
+                'group' => 'storage',
+                'type' => 'text',
+                'label' => 'Access Key',
+                'description' => 'Access key Object Storage dari panel IDCloudHost.',
+                'default' => config('filesystems.disks.idcloudhost.key'),
+            ],
+            [
+                'key' => 'filesystems.disks.idcloudhost.secret',
+                'group' => 'storage',
+                'type' => 'password',
+                'label' => 'Secret Key',
+                'description' => 'Secret key Object Storage. Kosongkan untuk tetap memakai nilai .env.',
+                'default' => null,
+            ],
+            [
+                'key' => 'filesystems.disks.idcloudhost.use_path_style_endpoint',
+                'group' => 'storage',
+                'type' => 'boolean',
+                'label' => 'Path-style URL',
+                'description' => 'Alamat bucket berbentuk endpoint/bucket (bukan bucket.endpoint). Biarkan aktif untuk IDCloudHost.',
+                'default' => config('filesystems.disks.idcloudhost.use_path_style_endpoint') ? '1' : '0',
+            ],
+
             // ===== Registrasi mandiri akun karyawan =====
             [
                 'key' => 'auth.registration_enabled',

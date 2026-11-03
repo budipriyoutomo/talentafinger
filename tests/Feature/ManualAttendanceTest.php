@@ -11,6 +11,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Models\UserScope;
 use App\Services\AttendanceSyncService;
+use App\Support\AttendancePhoto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
@@ -370,6 +371,81 @@ class ManualAttendanceTest extends TestCase
         $this->actingAs($this->employeeUser)->get("/api/attendance-logs/{$log->id}/photo")->assertOk();
         $this->actingAs($this->managerOf($this->outlet))->get("/api/attendance-logs/{$log->id}/photo")->assertOk();
         $this->actingAs($otherUser)->get("/api/attendance-logs/{$log->id}/photo")->assertForbidden();
+    }
+
+    public function test_foto_baru_masuk_object_storage_dan_foto_lama_lokal_tetap_terbaca(): void
+    {
+        $this->useObjectStorage();
+
+        $this->submit()->assertCreated();
+
+        $log = AttendanceLog::sole();
+        Storage::disk('idcloudhost')->assertExists($log->photo_path);
+        Storage::disk('local')->assertMissing($log->photo_path);
+        $this->actingAs($this->employeeUser)->get("/api/attendance-logs/{$log->id}/photo")->assertOk();
+
+        // Foto lama (sebelum pindah) masih di disk lokal.
+        Storage::disk('local')->put('attendance-photos/x.jpg', 'jpeg-lama');
+        $legacy = $this->manualLog();
+        $this->actingAs($this->employeeUser)->get("/api/attendance-logs/{$legacy->id}/photo")->assertOk();
+    }
+
+    public function test_command_migrasi_menyalin_foto_lokal_ke_object_storage(): void
+    {
+        $this->useObjectStorage();
+        Storage::disk('local')->put('attendance-photos/2026/10/a.jpg', 'jpeg-bytes');
+
+        $this->artisan('attendance:migrate-photos', ['--delete-local' => true])->assertSuccessful();
+
+        $this->assertSame('jpeg-bytes', Storage::disk('idcloudhost')->get('attendance-photos/2026/10/a.jpg'));
+        Storage::disk('local')->assertMissing('attendance-photos/2026/10/a.jpg');
+    }
+
+    public function test_setting_object_storage_dari_menu_pengaturan_menimpa_env(): void
+    {
+        config(['adms.photo_disk' => 'local']);
+        foreach ([
+            'attendance.photo_s3_enabled' => ['boolean', '1'],
+            'filesystems.disks.idcloudhost.bucket' => ['text', 'bucket-absen'],
+            'filesystems.disks.idcloudhost.key' => ['text', 'AK'],
+            'filesystems.disks.idcloudhost.secret' => ['password', 'SK'],
+        ] as $key => [$type, $value]) {
+            Setting::create(['key' => $key, 'value' => $value, 'group' => 'storage', 'type' => $type, 'label' => $key]);
+        }
+
+        $this->assertSame('idcloudhost', AttendancePhoto::diskName());
+        $this->assertSame('bucket-absen', config('filesystems.disks.idcloudhost.bucket'));
+        $this->assertSame('SK', config('filesystems.disks.idcloudhost.secret'));
+
+        // Fake SETELAH config diterapkan, supaya tak ada request ke S3 sungguhan.
+        Storage::fake('idcloudhost');
+        $this->submit()->assertCreated();
+        Storage::disk('idcloudhost')->assertExists(AttendanceLog::sole()->photo_path);
+    }
+
+    public function test_object_storage_tanpa_kredensial_lengkap_tetap_simpan_lokal(): void
+    {
+        Storage::fake('idcloudhost');
+        config([
+            'adms.photo_disk' => 'idcloudhost',
+            'filesystems.disks.idcloudhost.bucket' => null,
+        ]);
+
+        $this->submit()->assertCreated();
+
+        Storage::disk('local')->assertExists(AttendanceLog::sole()->photo_path);
+        $this->assertEmpty(Storage::disk('idcloudhost')->allFiles());
+    }
+
+    private function useObjectStorage(): void
+    {
+        Storage::fake('idcloudhost');
+        config([
+            'adms.photo_disk' => 'idcloudhost',
+            'filesystems.disks.idcloudhost.bucket' => 'bucket-test',
+            'filesystems.disks.idcloudhost.key' => 'AK',
+            'filesystems.disks.idcloudhost.secret' => 'SK',
+        ]);
     }
 
     // ===== Akun karyawan =====

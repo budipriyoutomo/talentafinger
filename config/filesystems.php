@@ -60,6 +60,25 @@ return [
             'report' => false,
         ],
 
+        // Object Storage IDCloudHost (S3-compatible) untuk foto absen. Bucket
+        // PRIVAT: foto tetap disajikan lewat route yang dijaga policy.
+        'idcloudhost' => [
+            'driver' => 's3',
+            'key' => env('IDCH_S3_ACCESS_KEY'),
+            'secret' => env('IDCH_S3_SECRET_KEY'),
+            'region' => env('IDCH_S3_REGION', 'us-east-1'),
+            'bucket' => env('IDCH_S3_BUCKET'),
+            'endpoint' => env('IDCH_S3_ENDPOINT', 'https://is3.cloudhost.id'),
+            'use_path_style_endpoint' => env('IDCH_S3_PATH_STYLE', true),
+            'visibility' => 'private',
+            // AWS SDK baru menambah checksum CRC32 di tiap upload secara default;
+            // storage S3-compatible (Ceph) bisa menolaknya. Kirim hanya bila wajib.
+            'request_checksum_calculation' => 'when_required',
+            'response_checksum_validation' => 'when_required',
+            'throw' => true,
+            'report' => false,
+        ],
+
     ],
 
     /*

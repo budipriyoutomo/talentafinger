@@ -156,7 +156,7 @@ class ManualAttendanceController extends Controller
                 ]);
             } catch (\Throwable $e) {
                 // Jangan tinggalkan foto yatim di disk bila log gagal tersimpan.
-                Storage::disk(AttendancePhoto::DISK)->delete($path);
+                AttendancePhoto::delete($path);
                 throw $e;
             }
 
@@ -173,8 +173,8 @@ class ManualAttendanceController extends Controller
         $log = AttendanceLog::with('machine')->findOrFail($id);
         $this->authorize('viewPhoto', $log);
 
-        $disk = Storage::disk(AttendancePhoto::DISK);
-        abort_unless($log->photo_path && $disk->exists($log->photo_path), 404);
+        $disk = AttendancePhoto::locate($log->photo_path);
+        abort_unless($disk, 404);
 
         return $disk->response($log->photo_path, null, [
             'Cache-Control' => 'private, max-age=3600',
