@@ -283,6 +283,26 @@ class TalentaEmployeeSyncTest extends TestCase
         $this->assertSame([$ho->id], Employee::where('talenta_user_id', '2')->first()->outlets()->pluck('outlets.id')->all());
     }
 
+    public function test_locally_deleted_employee_is_recreated_unless_resigned_or_missing(): void
+    {
+        $resigned = ['employment' => ['status' => 'Resigned', 'resign_date' => '2026-09-30']];
+        $this->fakeTalenta([$this->apiRow(1), $this->apiRow(2), $this->apiRow(3, $resigned)]);
+        $this->pull();
+        $this->sync();
+
+        // Hapus lokal; data Talenta tak berubah, user 2 hilang dari Talenta.
+        Employee::query()->delete();
+        $this->fakeTalenta([$this->apiRow(1), $this->apiRow(3, $resigned)]);
+        $this->pull();
+        $run = $this->sync();
+
+        $this->assertSame(1, $run->count_created);
+        $this->assertTrue(Employee::where('talenta_user_id', '1')->exists());
+        $this->assertFalse(Employee::where('talenta_user_id', '2')->exists(), 'sudah hilang dari Talenta');
+        $this->assertFalse(Employee::where('talenta_user_id', '3')->exists(), 'resign');
+        $this->assertNotNull(TalentaEmployee::where('talenta_user_id', '1')->value('employee_id'));
+    }
+
     public function test_talenta_employee_without_barcode_is_created_with_null_badge(): void
     {
         $this->fakeTalenta([$this->apiRow(1, ['personal' => ['barcode' => '']])]);

@@ -22,6 +22,7 @@ use Throwable;
  *  - Cocok -> field Talenta diperbarui otomatis (D7). talenta_employee_id (badgeno
  *    absensi) hanya diisi bila masih kosong; bila beda -> conflict.
  *  - Resign -> is_active=false (D6). Mesin tak disentuh.
+ *  - Karyawan lokal dihapus padahal masih aktif di Talenta -> dibuat ulang di sync berikutnya.
  *  - Field lokal (biometric_id, device_privilege, allow_manual_attendance) tak
  *    pernah disentuh; outlet hanya diisi bila karyawan belum punya outlet (D11).
  *
@@ -51,8 +52,16 @@ class TalentaEmployeeSyncService
 
         try {
             // conflict & error ikut dicoba ulang: admin mungkin sudah membereskan data lokalnya.
+            // Baris synced yang karyawan lokalnya sudah dihapus (FK null-on-delete) juga
+            // diproses lagi supaya dibuat ulang, kecuali resign / sudah hilang dari Talenta.
             // chunkById (bukan chunk) karena sync_state baris berubah saat diproses.
-            TalentaEmployee::whereIn('sync_state', ['pending', 'conflict', 'error'])
+            TalentaEmployee::where(fn ($q) => $q
+                ->whereIn('sync_state', ['pending', 'conflict', 'error'])
+                ->orWhere(fn ($q) => $q
+                    ->where('sync_state', 'synced')
+                    ->whereNull('employee_id')
+                    ->whereNull('missing_at')
+                    ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', TalentaEmployee::STATUS_RESIGNED))))
                 ->chunkById(200, function ($rows) use (&$counts, $by, $run) {
                     foreach ($rows as $row) {
                         $outcome = $this->processRow($row, $by);
