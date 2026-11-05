@@ -171,6 +171,15 @@ class SettingSeeder extends Seeder
                 'default' => null,
             ],
             [
+                'key' => 'attendance.workday_cutoff',
+                'group' => 'attendance',
+                'type' => 'time',
+                'label' => 'Jam Pergantian Hari Kerja',
+                'description' => 'Dipakai laporan Pengecualian Absensi. Absen sebelum jam ini dihitung hari kerja sebelumnya, '
+                    . 'mis. 05:00 = absen 01:30 tgl 5 masuk hari kerja tgl 4 (shift lewat tengah malam). 00:00 = tanggal kalender.',
+                'default' => '00:00',
+            ],
+            [
                 'key' => 'attendance.auto_send_include_failed',
                 'group' => 'attendance',
                 'type' => 'boolean',

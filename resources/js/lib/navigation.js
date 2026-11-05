@@ -6,6 +6,7 @@ import {
   Cpu,
   FileText,
   MapPin,
+  ClipboardList,
   UserCircle,
   Fingerprint,
   History,
@@ -51,6 +52,7 @@ export const navGroups = [
     items: [
       { path: '/attendance-logs', label: 'Logs', title: 'Attendance Logs', icon: FileText, permission: 'attendance.view' },
       { path: '/employee-presence', label: 'Absen per Mesin', title: 'Karyawan Absen di Mesin Mana', icon: MapPin, permission: 'attendance.view' },
+      { path: '/attendance-exceptions', label: 'Pengecualian', title: 'Pengecualian Absensi', icon: ClipboardList, permission: 'attendance.view' },
     ],
   },
   {

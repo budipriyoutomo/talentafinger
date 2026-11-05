@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AdmsController;
+use App\Http\Controllers\AttendanceExceptionController;
 use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
@@ -65,6 +66,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/employee-presence', [EmployeePresenceController::class, 'index']);
     // Raw log satu orang di satu tanggal (popup Detail).
     Route::get('/employee-presence/logs', [EmployeePresenceController::class, 'logs']);
+    // Laporan pengecualian absensi per hari kerja (tidak ada absen, absen sekali, dst).
+    Route::get('/attendance-exceptions', [AttendanceExceptionController::class, 'index']);
+    Route::get('/attendance-exceptions/export', [AttendanceExceptionController::class, 'export']);
     Route::get('/employee-management', [DashboardController::class, 'employeeManagement']);
     Route::get('/fingerprints', [DashboardController::class, 'fingerprints']);
     Route::get('/settings', [DashboardController::class, 'settings']);
