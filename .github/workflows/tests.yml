@@ -1,0 +1,46 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'   # composer.json mensyaratkan ^8.4
+          extensions: pdo_sqlite, sqlite3, gd, mbstring, zip, bcmath
+          coverage: none
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'   # sama dengan Dockerfile
+          cache: npm
+
+      - name: Cache composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache/files
+          key: composer-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-
+
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - run: npm ci
+      # Manifest Vite dibutuhkan test yang merender halaman Inertia (@vite).
+      - run: npm run build
+
+      # phpunit.xml memaksa APP_ENV=testing + SQLite in-memory (force="true"),
+      # jadi DB_* di .env.example (pgsql) tidak pernah dipakai di sini.
+      - run: cp .env.example .env
+      - run: php artisan key:generate
+      - run: php artisan test
