@@ -278,7 +278,7 @@ class ManualAttendanceController extends Controller
             'outlet_name' => $log->outlet?->name,
             'distance_meters' => $log->distance_meters,
             'review_note' => $log->review_note,
-            'photo_url' => "/api/attendance-logs/{$log->id}/photo",
+            'photo_url' => $log->photo_path ? "/api/attendance-logs/{$log->id}/photo" : null,
         ];
     }
 }

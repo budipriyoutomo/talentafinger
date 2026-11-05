@@ -114,7 +114,9 @@ export default function ManualReviewDialog({ log, canReview, onClose, onReviewed
 
         <div className="space-y-4 p-4">
           <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-950">
-            {photoFailed ? (
+            {!manual.photo_url ? (
+              <p className="p-8 text-center text-sm text-muted-foreground">Foto sudah melewati masa simpan.</p>
+            ) : photoFailed ? (
               <p className="p-8 text-center text-sm text-muted-foreground">Foto tidak bisa dimuat.</p>
             ) : (
               <img

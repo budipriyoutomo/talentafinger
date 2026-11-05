@@ -232,7 +232,8 @@ class DashboardController extends Controller
                     'accuracy_meters' => $log->accuracy_meters,
                     'latitude' => $log->latitude,
                     'longitude' => $log->longitude,
-                    'photo_url' => "/api/attendance-logs/{$log->id}/photo",
+                    // null = file foto sudah dihapus karena melewati masa simpan.
+                    'photo_url' => $log->photo_path ? "/api/attendance-logs/{$log->id}/photo" : null,
                     'reviewed_by' => $log->reviewer?->name,
                     'reviewed_at' => $log->reviewed_at?->format('Y-m-d H:i:s'),
                     'review_note' => $log->review_note,

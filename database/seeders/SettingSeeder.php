@@ -300,6 +300,16 @@ class SettingSeeder extends Seeder
                 'description' => 'Alamat bucket berbentuk endpoint/bucket (bukan bucket.endpoint). Biarkan aktif untuk IDCloudHost.',
                 'default' => config('filesystems.disks.idcloudhost.use_path_style_endpoint') ? '1' : '0',
             ],
+            [
+                'key' => 'attendance.photo_retention_days',
+                'group' => 'storage',
+                'type' => 'number',
+                'label' => 'Masa Simpan Foto Absen (hari)',
+                'description' => 'File foto absen foto & QR yang lebih tua dari ini dihapus otomatis tiap malam (02:45). '
+                    . 'Log absensinya tetap ada; foto yang masih menunggu review tidak dihapus. '
+                    . '0 = simpan selamanya. Penghapusan tidak bisa dibatalkan.',
+                'default' => '0',
+            ],
 
             // ===== Registrasi mandiri akun karyawan =====
             [
