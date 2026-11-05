@@ -538,4 +538,127 @@ class QrAttendanceTest extends TestCase
         $this->employee->update(['allow_manual_attendance' => true]);
         $this->actingAs($this->employeeUser->fresh())->get('/dashboard')->assertRedirect('/absen');
     }
+
+    // ===== Auto-approve QR (R1-B) =====
+
+    private function enableAutoApprove(int $maxDistance = 100, int $maxAccuracy = 30): void
+    {
+        config([
+            'attendance.qr_auto_approve' => true,
+            'attendance.qr_auto_approve_max_distance' => $maxDistance,
+            'attendance.qr_auto_approve_max_accuracy' => $maxAccuracy,
+        ]);
+    }
+
+    public function test_auto_approve_mati_selalu_pending_review(): void
+    {
+        $this->scanAsEmployee();
+        $this->submit()->assertCreated()->assertJsonFragment(['message' => 'Absen tercatat di Kopi Sudirman (±50 m). Menunggu persetujuan supervisor.']);
+
+        $log = AttendanceLog::sole();
+        $this->assertSame('pending_review', $log->status_sync);
+        $this->assertFalse($log->auto_approved);
+    }
+
+    public function test_lolos_semua_syarat_disetujui_otomatis_tetap_skipped(): void
+    {
+        $this->enableAutoApprove();
+
+        $this->scanAsEmployee();
+        $response = $this->submit()->assertCreated();
+
+        $log = AttendanceLog::sole();
+        // Sync QR ke Talenta sengaja mati: disetujui = 'skipped', bukan 'pending'.
+        $this->assertSame('skipped', $log->status_sync);
+        $this->assertTrue($log->auto_approved);
+        $this->assertNotNull($log->reviewed_at);
+        $this->assertNull($log->reviewed_by);
+        $this->assertStringContainsString('disetujui otomatis', $response->json('message'));
+        $this->assertStringNotContainsString('Menunggu persetujuan', $response->json('message'));
+        $this->assertDatabaseHas('audit_logs', ['action' => 'attendance.auto_approved', 'target_id' => $log->id, 'user_id' => $this->employeeUser->id]);
+    }
+
+    public function test_jarak_melebihi_batas_auto_approve_tetap_pending_review(): void
+    {
+        $this->enableAutoApprove(maxDistance: 20); // submit() berjarak ±50 m, masih dalam radius 100 m
+
+        $this->scanAsEmployee();
+        $this->submit()->assertCreated();
+
+        $log = AttendanceLog::sole();
+        $this->assertSame('pending_review', $log->status_sync);
+        $this->assertFalse($log->auto_approved);
+    }
+
+    public function test_akurasi_melebihi_batas_auto_approve_tetap_pending_review(): void
+    {
+        $this->enableAutoApprove(maxAccuracy: 5); // submit() akurasi ±9 m
+
+        $this->scanAsEmployee();
+        $this->submit()->assertCreated();
+
+        $this->assertSame('pending_review', AttendanceLog::sole()->status_sync);
+    }
+
+    public function test_ada_risk_flag_tetap_pending_review(): void
+    {
+        $this->enableAutoApprove();
+        \App\Models\EmployeeDevice::create([
+            'employee_id' => $this->employee->id,
+            'device_hash' => hash('sha256', 'hp-lama'),
+            'first_seen_at' => now()->subDays(10),
+            'last_seen_at' => now()->subDay(),
+        ]);
+
+        $this->scanAsEmployee();
+        $this->submit()->assertCreated();
+
+        $log = AttendanceLog::sole();
+        $this->assertSame('pending_review', $log->status_sync);
+        $this->assertNotEmpty($log->risk_flags);
+        $this->assertFalse($log->auto_approved);
+    }
+
+    public function test_device_check_mati_auto_approve_tidak_jalan(): void
+    {
+        $this->enableAutoApprove();
+        config(['attendance.device_check' => false]);
+
+        $this->scanAsEmployee();
+        $this->submit()->assertCreated();
+
+        $this->assertSame('pending_review', AttendanceLog::sole()->status_sync);
+    }
+
+    public function test_absen_foto_tidak_pernah_disetujui_otomatis(): void
+    {
+        $this->enableAutoApprove(maxDistance: 1000, maxAccuracy: 1000);
+        $this->employee->update(['allow_manual_attendance' => true]);
+
+        $this->actingAs($this->employeeUser->fresh())->post('/api/attendance/manual', [
+            'photo' => UploadedFile::fake()->image('selfie.jpg', 640, 480),
+            'latitude' => self::LAT + 0.0001,
+            'longitude' => self::LNG,
+            'accuracy' => 5,
+        ], ['Accept' => 'application/json'])->assertCreated();
+
+        $log = AttendanceLog::sole();
+        $this->assertSame(AttendanceLog::SOURCE_MANUAL_PHOTO, $log->source);
+        $this->assertSame('pending_review', $log->status_sync);
+        $this->assertFalse($log->auto_approved);
+    }
+
+    public function test_filter_auto_approved_di_halaman_logs(): void
+    {
+        $this->enableAutoApprove();
+        $this->scanAsEmployee();
+        $this->submit()->assertCreated();
+        $this->qrLog();
+
+        $admin = $this->user('admin', 'admin@adms.local');
+        $logs = $this->actingAs($admin)->get('/attendance-logs?auto_approved=1')->assertOk()->viewData('page')['props']['logs'];
+
+        $this->assertCount(1, $logs);
+        $this->assertTrue($logs[0]['manual']['auto_approved']);
+    }
 }

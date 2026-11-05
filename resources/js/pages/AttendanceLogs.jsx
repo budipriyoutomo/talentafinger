@@ -98,7 +98,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
   const [showBulkReject, setShowBulkReject] = useState(false)
   // Panel filter disembunyikan default; otomatis terbuka bila ada filter aktif dari URL.
   const [showFilters, setShowFilters] = useState(
-    () => !!(filters.machine_id || filters.brand_id || filters.outlet_id || filters.source || filters.flagged || filters.date_from || filters.date_to)
+    () => !!(filters.machine_id || filters.brand_id || filters.outlet_id || filters.source || filters.flagged || filters.auto_approved || filters.date_from || filters.date_to)
   )
 
   // Refresh tabel berkala tanpa kehilangan filter/scroll. Hanya muat ulang
@@ -184,6 +184,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
       outlet_id: filters.outlet_id || '',
       source: filters.source || '',
       flagged: filters.flagged ? '1' : '',
+      auto_approved: filters.auto_approved ? '1' : '',
       date_from: filters.date_from || '',
       date_to: filters.date_to || '',
       per_page: perPage,
@@ -214,6 +215,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         outlet_id: filters.outlet_id || '',
         source: filters.source || '',
         flagged: filters.flagged ? '1' : '',
+        auto_approved: filters.auto_approved ? '1' : '',
         date_from: filters.date_from || '',
         date_to: filters.date_to || '',
         per_page: perPage,
@@ -251,7 +253,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
 
   // "Filter" di sini = filter selain tab status (mesin/brand/outlet/tanggal).
   const hasFilters =
-    filters.machine_id || filters.brand_id || filters.outlet_id || filters.source || filters.flagged || filters.date_from || filters.date_to
+    filters.machine_id || filters.brand_id || filters.outlet_id || filters.source || filters.flagged || filters.auto_approved || filters.date_from || filters.date_to
 
   const csrf = () => document.querySelector('meta[name="csrf-token"]').content
 
@@ -366,6 +368,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
           outlet_id: filters.outlet_id || '',
           source: filters.source || '',
           flagged: !!filters.flagged,
+          auto_approved: !!filters.auto_approved,
           date_from: filters.date_from || '',
           date_to: filters.date_to || '',
         }),
@@ -541,7 +544,12 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         cell: ({ row }) => {
           const status = row.getValue('status_sync')
           return (
-            <Badge variant={STATUS_VARIANT[status] || 'info'}>{STATUS_LABEL[status] || status}</Badge>
+            <div className="flex flex-wrap items-center gap-1">
+              <Badge variant={STATUS_VARIANT[status] || 'info'}>{STATUS_LABEL[status] || status}</Badge>
+              {row.original.manual?.auto_approved && (
+                <Badge variant="outline" title="Disetujui otomatis oleh sistem (absen QR)">Otomatis</Badge>
+              )}
+            </div>
           )
         },
       },
@@ -820,6 +828,16 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
                     onChange={(e) => applyFilters({ flagged: e.target.checked ? '1' : '' })}
                   />
                   Ada flag
+                </label>
+                <label
+                  className="flex h-9 items-center gap-2 text-sm font-medium text-foreground"
+                  title="Absen QR yang disetujui otomatis — untuk diperiksa sampel"
+                >
+                  <Checkbox
+                    checked={!!filters.auto_approved}
+                    onChange={(e) => applyFilters({ auto_approved: e.target.checked ? '1' : '' })}
+                  />
+                  Disetujui otomatis
                 </label>
                 <div className="space-y-1.5 sm:w-48">
                   <label className="text-sm font-medium text-foreground">

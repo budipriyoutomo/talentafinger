@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\AttendanceKiosk;
 use App\Models\AttendanceLog;
+use App\Models\AttendanceSource;
+use App\Models\AuditLog;
 use App\Models\Employee;
 use App\Models\Setting;
 use App\Services\AttendanceDeviceService;
@@ -170,6 +172,7 @@ class QrAttendanceController extends Controller
 
             // Penanda titip absen (perangkat baru / dipakai bersama). Tak pernah memblokir.
             $flags = app(AttendanceDeviceService::class)->check($request, $employee);
+            $autoApproved = $this->qualifiesForAutoApprove($distance, $accuracy, $flags);
 
             $path = AttendancePhoto::store($request->file('photo'));
 
@@ -186,7 +189,12 @@ class QrAttendanceController extends Controller
                     'machine_id' => null,
                     'biometric_id_lokal' => $employee->biometric_id,
                     'timestamp' => Carbon::createFromTimestamp($scan['scanned_at'])->setTimezone($tz)->format('Y-m-d H:i:s'),
-                    'status_sync' => 'pending_review',
+                    // Lolos semua syarat auto-approve: langsung siap (status sama dengan
+                    // disetujui supervisor), tapi tetap ditandai auto_approved untuk sampling.
+                    'status_sync' => $autoApproved ? AttendanceSource::readyStatus(AttendanceLog::SOURCE_QR) : 'pending_review',
+                    'auto_approved' => $autoApproved,
+                    'reviewed_at' => $autoApproved ? now() : null,
+                    'reviewed_by' => null,
                     'photo_path' => $path,
                     'latitude' => $lat,
                     'longitude' => $lng,
@@ -200,11 +208,22 @@ class QrAttendanceController extends Controller
                 throw $e;
             }
 
+            if ($autoApproved) {
+                AuditLog::record(
+                    'attendance.auto_approved',
+                    ['type' => 'attendance_log', 'id' => $log->id, 'label' => $employee->name],
+                    // Aktor = karyawan yang absen (request-nya memicu); yang menyetujui adalah sistem.
+                    ['source' => AttendanceLog::SOURCE_QR, 'distance_meters' => $distance, 'accuracy_meters' => (int) round($accuracy)],
+                );
+            }
+
             // Satu scan = satu absen.
             $request->session()->forget(self::SESSION_SCAN);
 
             return response()->json([
-                'message' => "Absen tercatat di {$outlet->name} (±{$distance} m). Menunggu persetujuan supervisor.",
+                'message' => $autoApproved
+                    ? "Absen tercatat di {$outlet->name} (±{$distance} m) dan disetujui otomatis."
+                    : "Absen tercatat di {$outlet->name} (±{$distance} m). Menunggu persetujuan supervisor.",
                 'log' => $this->presentForEmployee($log->load(['outlet', 'kiosk'])),
             ], 201);
         });
@@ -291,6 +310,28 @@ class QrAttendanceController extends Controller
         return $employee->outlets->contains('id', $kiosk->outlet_id)
             ? null
             : "Anda tidak terdaftar di outlet {$kiosk->outlet?->name}. Hubungi admin.";
+    }
+
+    /**
+     * Auto-approve QR (R1-B): hanya bila fitur aktif, deteksi perangkat aktif
+     * (tanpa itu risk_flags selalu kosong, syarat "tanpa flag" jadi tak berarti),
+     * jarak & akurasi GPS dalam batas, dan tak ada risk flag sama sekali.
+     * Absen foto TIDAK pernah lewat sini.
+     *
+     * @param  string[]  $flags
+     */
+    private function qualifiesForAutoApprove(int $distance, float $accuracy, array $flags): bool
+    {
+        if (! Setting::value('attendance.qr_auto_approve', false) || ! AttendanceDeviceService::enabled()) {
+            return false;
+        }
+
+        $maxDistance = (int) Setting::value('attendance.qr_auto_approve_max_distance', 50);
+        $maxAccuracy = (int) Setting::value('attendance.qr_auto_approve_max_accuracy', 30);
+
+        return $flags === []
+            && $distance <= $maxDistance
+            && round($accuracy) <= $maxAccuracy;
     }
 
     private function radius(): int

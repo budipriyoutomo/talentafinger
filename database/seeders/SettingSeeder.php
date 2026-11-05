@@ -241,6 +241,32 @@ class SettingSeeder extends Seeder
             ],
 
             [
+                'key' => 'attendance.qr_auto_approve',
+                'group' => 'attendance',
+                'type' => 'boolean',
+                'label' => 'Setujui Otomatis Absen QR',
+                'description' => 'Absen QR disetujui tanpa supervisor bila jarak & akurasi GPS dalam batas di bawah DAN tidak ada tanda '
+                    . 'perangkat (butuh "Tandai Perangkat Tak Biasa" aktif). Absen foto selalu lewat review. '
+                    . 'Tetapkan batasnya dari data jarak/akurasi production dulu.',
+                'default' => '0',
+            ],
+            [
+                'key' => 'attendance.qr_auto_approve_max_distance',
+                'group' => 'attendance',
+                'type' => 'number',
+                'label' => 'Auto-approve QR: Jarak Maksimal (meter)',
+                'description' => 'Jarak HP dari outlet kiosk. Sebaiknya lebih kecil dari Radius Absen QR.',
+                'default' => '50',
+            ],
+            [
+                'key' => 'attendance.qr_auto_approve_max_accuracy',
+                'group' => 'attendance',
+                'type' => 'number',
+                'label' => 'Auto-approve QR: Akurasi GPS Maksimal (meter)',
+                'description' => 'Akurasi GPS terburuk yang masih disetujui otomatis. Sebaiknya lebih kecil dari Akurasi GPS Maksimal Absen QR.',
+                'default' => '30',
+            ],
+            [
                 'key' => 'attendance.device_check',
                 'group' => 'attendance',
                 'type' => 'boolean',

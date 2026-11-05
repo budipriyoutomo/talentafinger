@@ -201,7 +201,9 @@ export default function ManualReviewDialog({ log, canReview, onClose, onReviewed
               <>
                 <dt className="text-muted-foreground">Direview</dt>
                 <dd className="text-foreground">
-                  {manual.reviewed_by || '-'}
+                  {manual.auto_approved ? (
+                    <Badge variant="info" title="Lolos batas jarak & akurasi GPS, tanpa tanda perangkat">Otomatis (sistem)</Badge>
+                  ) : (manual.reviewed_by || '-')}
                   {manual.review_note && (
                     <span className="block text-muted-foreground">“{manual.review_note}”</span>
                   )}

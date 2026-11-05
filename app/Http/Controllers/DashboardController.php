@@ -239,6 +239,8 @@ class DashboardController extends Controller
                     'review_note' => $log->review_note,
                     // Deteksi titip absen: ['new_device', 'shared_device'] atau [].
                     'risk_flags' => $log->risk_flags ?? [],
+                    // Disetujui sistem (auto-approve QR), bukan supervisor.
+                    'auto_approved' => (bool) $log->auto_approved,
                 ] : null,
             ]);
 

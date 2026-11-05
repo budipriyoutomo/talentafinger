@@ -47,6 +47,7 @@ const ACTION_LABEL = {
   'attendance.manual_approved': 'Absen foto/QR disetujui',
   'attendance.manual_rejected': 'Absen foto/QR ditolak',
   'attendance.photos_pruned': 'Foto absen lama dihapus (retensi)',
+  'attendance.auto_approved': 'Absen QR disetujui otomatis',
   'org.company_deleted': 'Company dihapus',
   'org.brand_deleted': 'Brand dihapus',
   'org.outlet_deleted': 'Outlet dihapus',
