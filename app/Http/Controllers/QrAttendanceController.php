@@ -6,6 +6,7 @@ use App\Models\AttendanceKiosk;
 use App\Models\AttendanceLog;
 use App\Models\Employee;
 use App\Models\Setting;
+use App\Services\AttendanceDeviceService;
 use App\Services\QrTokenService;
 use App\Support\AttendancePhoto;
 use App\Support\Geo;
@@ -87,6 +88,8 @@ class QrAttendanceController extends Controller
             ?? ($kiosk ? $this->kioskProblem($kiosk) ?? $this->registrationProblem($employee, $kiosk) : null);
 
         return Inertia::render('QrCheckIn', [
+            // Pemberitahuan ke karyawan bahwa perangkat absen dicatat (R4).
+            'device_check' => AttendanceDeviceService::enabled(),
             'employee' => $employee ? ['name' => $employee->name] : null,
             'scan' => $kiosk ? [
                 'kiosk_name' => $kiosk->name,
@@ -165,6 +168,9 @@ class QrAttendanceController extends Controller
                 ], 422);
             }
 
+            // Penanda titip absen (perangkat baru / dipakai bersama). Tak pernah memblokir.
+            $flags = app(AttendanceDeviceService::class)->check($request, $employee);
+
             $path = AttendancePhoto::store($request->file('photo'));
 
             // Waktu absen = waktu SCAN (bukti hadir di depan kiosk), dalam jam LOKAL
@@ -186,6 +192,7 @@ class QrAttendanceController extends Controller
                     'longitude' => $lng,
                     'accuracy_meters' => (int) round($accuracy),
                     'distance_meters' => $distance,
+                    'risk_flags' => $flags ?: null,
                 ]);
             } catch (\Throwable $e) {
                 // Jangan tinggalkan foto yatim di disk bila log gagal tersimpan.

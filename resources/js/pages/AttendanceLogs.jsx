@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { usePermissions } from '@/lib/permissions'
-import ManualReviewDialog, { EMPLOYEE_SOURCE, STATUS_LABEL, STATUS_VARIANT } from '@/components/ManualReviewDialog'
+import ManualReviewDialog, { EMPLOYEE_SOURCE, RiskFlagBadges, STATUS_LABEL, STATUS_VARIANT } from '@/components/ManualReviewDialog'
 import BulkRejectDialog from '@/components/BulkRejectDialog'
 import { Download, Send, Loader2, X, ChevronLeft, ChevronRight, RefreshCw, ListChecks, AlertTriangle, CheckCircle2, SlidersHorizontal, Camera, Cpu, Check } from 'lucide-react'
 
@@ -98,7 +98,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
   const [showBulkReject, setShowBulkReject] = useState(false)
   // Panel filter disembunyikan default; otomatis terbuka bila ada filter aktif dari URL.
   const [showFilters, setShowFilters] = useState(
-    () => !!(filters.machine_id || filters.brand_id || filters.outlet_id || filters.source || filters.date_from || filters.date_to)
+    () => !!(filters.machine_id || filters.brand_id || filters.outlet_id || filters.source || filters.flagged || filters.date_from || filters.date_to)
   )
 
   // Refresh tabel berkala tanpa kehilangan filter/scroll. Hanya muat ulang
@@ -183,6 +183,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
       brand_id: filters.brand_id || '',
       outlet_id: filters.outlet_id || '',
       source: filters.source || '',
+      flagged: filters.flagged ? '1' : '',
       date_from: filters.date_from || '',
       date_to: filters.date_to || '',
       per_page: perPage,
@@ -212,6 +213,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         brand_id: filters.brand_id || '',
         outlet_id: filters.outlet_id || '',
         source: filters.source || '',
+        flagged: filters.flagged ? '1' : '',
         date_from: filters.date_from || '',
         date_to: filters.date_to || '',
         per_page: perPage,
@@ -249,7 +251,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
 
   // "Filter" di sini = filter selain tab status (mesin/brand/outlet/tanggal).
   const hasFilters =
-    filters.machine_id || filters.brand_id || filters.outlet_id || filters.source || filters.date_from || filters.date_to
+    filters.machine_id || filters.brand_id || filters.outlet_id || filters.source || filters.flagged || filters.date_from || filters.date_to
 
   const csrf = () => document.querySelector('meta[name="csrf-token"]').content
 
@@ -363,6 +365,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
           brand_id: filters.brand_id || '',
           outlet_id: filters.outlet_id || '',
           source: filters.source || '',
+          flagged: !!filters.flagged,
           date_from: filters.date_from || '',
           date_to: filters.date_to || '',
         }),
@@ -492,7 +495,12 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
       {
         accessorKey: 'employee_name',
         header: 'Employee',
-        cell: ({ row }) => <div className="text-sm">{row.getValue('employee_name') || 'N/A'}</div>,
+        cell: ({ row }) => (
+          <div className="space-y-1 text-sm">
+            <div>{row.getValue('employee_name') || 'N/A'}</div>
+            {activeTab !== 'pending_review' && <RiskFlagBadges flags={row.original.manual?.risk_flags} />}
+          </div>
+        ),
       },
       // Tab "Perlu Review": foto kecil + jarak + akurasi, supaya bisa diperiksa
       // tanpa membuka dialog satu per satu.
@@ -518,9 +526,10 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
               ) : (
                 <span className="text-xs text-muted-foreground">tanpa foto</span>
               )}
-              <div className="text-xs leading-tight">
+              <div className="space-y-1 text-xs leading-tight">
                 <div>±{manual.distance_meters ?? '?'} m</div>
                 <div className="text-muted-foreground">GPS ±{manual.accuracy_meters ?? '?'} m</div>
+                <RiskFlagBadges flags={manual.risk_flags} />
               </div>
             </div>
           )
@@ -802,6 +811,16 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
                     ))}
                   </Select>
                 </div>
+                <label
+                  className="flex h-9 items-center gap-2 text-sm font-medium text-foreground"
+                  title="Absen foto/QR dari HP baru atau HP yang dipakai karyawan lain"
+                >
+                  <Checkbox
+                    checked={!!filters.flagged}
+                    onChange={(e) => applyFilters({ flagged: e.target.checked ? '1' : '' })}
+                  />
+                  Ada flag
+                </label>
                 <div className="space-y-1.5 sm:w-48">
                   <label className="text-sm font-medium text-foreground">
                     Brand

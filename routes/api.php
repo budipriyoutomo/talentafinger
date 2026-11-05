@@ -4,6 +4,7 @@ use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\AttendanceSourceController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\EmployeeDeviceController;
 use App\Http\Controllers\FingerprintController;
 use App\Http\Controllers\KioskController;
 use App\Http\Controllers\MachineController;
@@ -69,6 +70,9 @@ Route::delete('/employees/{id}/fingerprints', [FingerprintController::class, 'de
 Route::post('/employees/import-from-machine', [EmployeeController::class, 'importFromMachine']);
 Route::post('/employees/remove-from-machines', [EmployeeController::class, 'removeFromMachines']);
 Route::post('/employees/bulk-deactivate', [EmployeeController::class, 'bulkDeactivate']);
+// Perangkat absen foto/QR (deteksi titip absen); reset saat karyawan ganti HP.
+Route::get('/employees/{id}/devices', [EmployeeDeviceController::class, 'index']);
+Route::delete('/employees/{id}/devices/{deviceId}', [EmployeeDeviceController::class, 'destroy']);
 Route::get('/employees', [EmployeeController::class, 'index']);
 Route::post('/employees', [EmployeeController::class, 'store']);
 Route::put('/employees/{id}', [EmployeeController::class, 'update']);

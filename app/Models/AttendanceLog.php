@@ -44,6 +44,7 @@ class AttendanceLog extends Model
         'reviewed_by',
         'reviewed_at',
         'review_note',
+        'risk_flags',
     ];
 
     protected $attributes = [
@@ -57,6 +58,7 @@ class AttendanceLog extends Model
         'longitude' => 'float',
         'accuracy_meters' => 'integer',
         'distance_meters' => 'integer',
+        'risk_flags' => 'array',
     ];
 
     /** Path foto di disk privat — jangan pernah ikut terkirim apa adanya ke browser. */
@@ -181,6 +183,8 @@ class AttendanceLog extends Model
             'date_to' => $request->input('date_to') ?: null,
             'status' => in_array($status, self::STATUSES, true) ? $status : null,
             'source' => in_array($source, self::SOURCES, true) ? $source : null,
+            // "Ada flag" (deteksi titip absen): hanya log ber-risk_flags.
+            'flagged' => $request->boolean('flagged') ?: null,
         ];
     }
 
@@ -213,6 +217,8 @@ class AttendanceLog extends Model
             ->when($filters['machine_id'] ?? null, fn ($q, $v) => $q->where('machine_id', $v))
             ->when($status, fn ($q, $v) => $q->where('status_sync', $v))
             ->when($source, fn ($q, $v) => $q->where('source', $v))
+            // risk_flags disimpan NULL bila kosong, jadi cukup whereNotNull.
+            ->when($filters['flagged'] ?? null, fn ($q) => $q->whereNotNull('risk_flags'))
             ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('timestamp', '>=', $v))
             ->when($filters['date_to'] ?? null, fn ($q, $v) => $q->whereDate('timestamp', '<=', $v))
             // Brand/outlet mengikuti outlet MESIN (log mesin) atau outlet tempat

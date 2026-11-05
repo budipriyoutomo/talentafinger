@@ -9,6 +9,7 @@ use App\Models\Employee;
 use App\Models\Outlet;
 use App\Models\Setting;
 use App\Models\User;
+use App\Services\AttendanceDeviceService;
 use App\Support\AttendancePhoto;
 use App\Support\Geo;
 use Illuminate\Contracts\Cache\LockTimeoutException;
@@ -78,6 +79,8 @@ class ManualAttendanceController extends Controller
         $employee = $user->employee()->with('outlets')->first();
 
         return Inertia::render('ManualCheckIn', [
+            // Pemberitahuan ke karyawan bahwa perangkat absen dicatat (R4).
+            'device_check' => AttendanceDeviceService::enabled(),
             'employee' => $employee ? [
                 'name' => $employee->name,
                 'biometric_id' => $employee->biometric_id,
@@ -133,6 +136,9 @@ class ManualAttendanceController extends Controller
                 ], 422);
             }
 
+            // Penanda titip absen (perangkat baru / dipakai bersama). Tak pernah memblokir.
+            $flags = app(AttendanceDeviceService::class)->check($request, $employee);
+
             $path = AttendancePhoto::store($request->file('photo'));
 
             // Waktu disimpan dalam jam LOKAL perangkat (sama seperti log mesin), karena
@@ -153,6 +159,7 @@ class ManualAttendanceController extends Controller
                     'longitude' => $lng,
                     'accuracy_meters' => isset($data['accuracy']) ? (int) round($data['accuracy']) : null,
                     'distance_meters' => $distance,
+                    'risk_flags' => $flags ?: null,
                 ]);
             } catch (\Throwable $e) {
                 // Jangan tinggalkan foto yatim di disk bila log gagal tersimpan.

@@ -55,6 +55,12 @@ class Employee extends Model
         return $this->belongsToMany(Outlet::class, 'employee_outlet')->withTimestamps();
     }
 
+    /** Perangkat absen foto / QR (deteksi titip absen). */
+    public function devices()
+    {
+        return $this->hasMany(EmployeeDevice::class);
+    }
+
     public function biometricTemplates()
     {
         return $this->hasMany(BiometricTemplate::class);

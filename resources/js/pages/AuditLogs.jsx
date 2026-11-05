@@ -40,6 +40,7 @@ const ACTION_LABEL = {
   'kiosk.deleted': 'Kiosk QR dihapus',
   'kiosk.activated': 'Tablet kiosk QR diaktivasi',
   'employee.deleted': 'Karyawan dihapus',
+  'employee.device_reset': 'Perangkat absen karyawan direset',
   'attendance.sent': 'Kirim 1 log ke Talenta',
   'attendance.send_pending': 'Kirim semua pending ke Talenta',
   'attendance.resend': 'Kirim ulang ke Talenta',

@@ -8,10 +8,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { Trash2, Plus, Pencil, Fingerprint, Send, X, SlidersHorizontal, ServerOff, UserPlus, UserCheck, UserX } from 'lucide-react'
+import { Trash2, Plus, Pencil, Fingerprint, Send, X, SlidersHorizontal, ServerOff, UserPlus, UserCheck, UserX, Smartphone } from 'lucide-react'
 import { usePermissions } from '@/lib/permissions'
 import CreateEmployeeUsersDialog from '@/components/CreateEmployeeUsersDialog'
 import EmployeeFingerprintDialog from '@/components/EmployeeFingerprintDialog'
+import EmployeeDevicesDialog from '@/components/EmployeeDevicesDialog'
 import BulkDistributeDialog from '@/components/BulkDistributeDialog'
 import RemoveFromMachinesDialog from '@/components/RemoveFromMachinesDialog'
 
@@ -60,6 +61,8 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
   const canManageUsers = can('user.manage')
   // Karyawan yang dialog "Buat Akun User"-nya terbuka (null = tertutup).
   const [accountTargets, setAccountTargets] = useState(null)
+  // Karyawan yang daftar perangkat absennya sedang dibuka (reset saat ganti HP).
+  const [devicesEmployee, setDevicesEmployee] = useState(null)
 
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -555,6 +558,10 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
                     <Trash2 className="h-3 w-3" />
                     Hapus
                   </Button>
+                  <Button onClick={() => setDevicesEmployee(e)} variant="outline" size="sm" className="gap-1" title="HP yang dipakai absen foto/QR; reset saat ganti HP">
+                    <Smartphone className="h-3 w-3" />
+                    Perangkat
+                  </Button>
                 </>
               )}
               {canRemove && (
@@ -990,6 +997,10 @@ export default function EmployeesPanel({ employees = [], companies = [], machine
           machines={machines}
           onClose={() => setRemoveTargets(null)}
         />
+      )}
+
+      {devicesEmployee && (
+        <EmployeeDevicesDialog employee={devicesEmployee} onClose={() => setDevicesEmployee(null)} />
       )}
 
       {accountTargets && (

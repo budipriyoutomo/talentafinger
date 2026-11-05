@@ -237,6 +237,8 @@ class DashboardController extends Controller
                     'reviewed_by' => $log->reviewer?->name,
                     'reviewed_at' => $log->reviewed_at?->format('Y-m-d H:i:s'),
                     'review_note' => $log->review_note,
+                    // Deteksi titip absen: ['new_device', 'shared_device'] atau [].
+                    'risk_flags' => $log->risk_flags ?? [],
                 ] : null,
             ]);
 

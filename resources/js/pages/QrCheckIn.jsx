@@ -68,6 +68,7 @@ function useCountdown(initial) {
  */
 export default function QrCheckIn({
   employee, scan, qr_error, blocked_reason, radius_meters, max_accuracy_meters = 100, max_photo_kb, recent = [], can_manual_photo,
+  device_check = false,
 }) {
   const { position, locating, geoError, locate } = useFreshLocation()
   // Server menolak lokasi yang akurasinya lebih buruk dari batas ini.
@@ -247,6 +248,7 @@ export default function QrCheckIn({
               <CardDescription>
                 {scan.kiosk_name} · harus dalam radius {radius_meters} m dari outlet. Absen dicek supervisor
                 sebelum masuk ke Talenta.
+                {device_check && ' Perangkat (HP/browser) yang dipakai absen dicatat untuk mencegah titip absen.'}
               </CardDescription>
               <p className={`flex items-center gap-1.5 text-sm font-medium ${
                 expired ? 'text-red-600 dark:text-red-400' : secondsLeft <= 30 ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'

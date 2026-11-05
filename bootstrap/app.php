@@ -36,6 +36,11 @@ return Application::configure(basePath: dirname(__DIR__))
                 | Request::HEADER_X_FORWARDED_PROTO,
         );
 
+        // Cookie perangkat absen (AttendanceDeviceService) berisi UUID acak, bukan
+        // rahasia. Tanpa enkripsi supaya ganti APP_KEY tidak membuat semua
+        // karyawan mendadak terbaca "perangkat baru".
+        $middleware->encryptCookies(except: ['att_device']);
+
         $middleware->validateCsrfTokens(except: [
             'iclock/*',
             // Tablet kiosk QR: autentikasi pakai token header, dan sesi

@@ -19,7 +19,7 @@ function csrf() {
  * Mobile-first, tanpa layout admin. Alur: lokasi -> foto -> kirim ->
  * menunggu persetujuan supervisor.
  */
-export default function ManualCheckIn({ employee, blocked_reason, radius_meters, max_photo_kb, recent = [], qr_available }) {
+export default function ManualCheckIn({ employee, blocked_reason, radius_meters, max_photo_kb, recent = [], qr_available, device_check = false }) {
   const { position, locating, geoError, locate } = useFreshLocation()
 
   const [photo, setPhoto] = useState(null) // Blob siap kirim
@@ -154,6 +154,7 @@ export default function ManualCheckIn({ employee, blocked_reason, radius_meters,
               <CardDescription>
                 Harus dalam radius {radius_meters} m dari outlet Anda. Absen akan dicek supervisor
                 sebelum masuk ke Talenta.
+                {device_check && ' Perangkat (HP/browser) yang dipakai absen dicatat untuk mencegah titip absen.'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">

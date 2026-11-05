@@ -244,6 +244,24 @@ class QrAttendanceTest extends TestCase
         $this->assertNull(session('qr_scan'));
     }
 
+    public function test_submit_dari_hp_baru_ditandai_new_device_tanpa_diblokir(): void
+    {
+        // Karyawan sudah punya HP aktif lain; absen ini dari browser tanpa cookie perangkat.
+        \App\Models\EmployeeDevice::create([
+            'employee_id' => $this->employee->id,
+            'device_hash' => hash('sha256', 'hp-lama'),
+            'first_seen_at' => now()->subDays(10),
+            'last_seen_at' => now()->subDay(),
+        ]);
+
+        $this->scanAsEmployee();
+        $this->submit()->assertCreated();
+
+        $log = AttendanceLog::sole();
+        $this->assertSame('pending_review', $log->status_sync);
+        $this->assertSame([\App\Services\AttendanceDeviceService::FLAG_NEW_DEVICE], $log->risk_flags);
+    }
+
     public function test_submit_tanpa_scan_ditolak_tanpa_log_dan_file(): void
     {
         $this->submit()->assertStatus(422)->assertJsonPath('message', 'Waktu scan habis. Scan ulang QR di layar outlet.');

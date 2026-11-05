@@ -240,6 +240,17 @@ class SettingSeeder extends Seeder
                 'default' => '180',
             ],
 
+            [
+                'key' => 'attendance.device_check',
+                'group' => 'attendance',
+                'type' => 'boolean',
+                'label' => 'Tandai Perangkat Tak Biasa (Titip Absen)',
+                'description' => 'Absen foto & QR dari HP baru, atau HP yang dipakai karyawan lain dalam 30 hari, '
+                    . 'diberi tanda di layar review. Hanya penanda: absen tidak pernah diblokir. '
+                    . 'Perangkat dikenali lewat cookie acak (tanpa data perangkat lain).',
+                'default' => '1',
+            ],
+
             // ===== Penyimpanan foto absen (Object Storage IDCloudHost) =====
             // Key S3 = path config disk 'idcloudhost' (config/filesystems.php),
             // jadi field kosong otomatis kembali ke nilai IDCH_S3_* di .env.

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Camera, Check, Loader2, MapPin, QrCode, X } from 'lucide-react'
+import { AlertTriangle, Camera, Check, Loader2, MapPin, QrCode, X } from 'lucide-react'
 
 function csrf() {
   return document.querySelector('meta[name="csrf-token"]').content
@@ -27,6 +27,27 @@ export const STATUS_VARIANT = {
   rejected: 'destructive',
   duplicate: 'secondary',
   skipped: 'secondary',
+}
+
+// Penanda titip absen (AttendanceDeviceService). Hanya petunjuk untuk supervisor:
+// hapus cookie / ganti browser juga terbaca "HP baru", jadi bukan bukti curang.
+export const RISK_FLAG = {
+  new_device: { label: 'HP baru', hint: 'Karyawan sudah punya HP terdaftar lain; absen ini dari perangkat/browser yang belum dikenal.' },
+  shared_device: { label: 'HP dipakai bersama', hint: 'Perangkat ini dipakai karyawan lain untuk absen dalam 30 hari terakhir.' },
+}
+
+export function RiskFlagBadges({ flags }) {
+  if (!flags || flags.length === 0) return null
+  return (
+    <span className="inline-flex flex-wrap gap-1">
+      {flags.map((f) => (
+        <Badge key={f} variant="warning" title={RISK_FLAG[f]?.hint}>
+          <AlertTriangle className="mr-1 h-3 w-3" />
+          {RISK_FLAG[f]?.label || f}
+        </Badge>
+      ))}
+    </span>
+  )
 }
 
 // Absen yang dikirim karyawan sendiri (cocok AttendanceLog::EMPLOYEE_SOURCES).
@@ -137,6 +158,17 @@ export default function ManualReviewDialog({ log, canReview, onClose, onReviewed
             </dd>
             <dt className="text-muted-foreground">Sumber</dt>
             <dd className="text-foreground">{source.title}</dd>
+            {manual.risk_flags?.length > 0 && (
+              <>
+                <dt className="text-muted-foreground">Perangkat</dt>
+                <dd className="space-y-1">
+                  <RiskFlagBadges flags={manual.risk_flags} />
+                  {manual.risk_flags.map((f) => (
+                    <p key={f} className="text-xs text-muted-foreground">{RISK_FLAG[f]?.hint}</p>
+                  ))}
+                </dd>
+              </>
+            )}
             <dt className="text-muted-foreground">Outlet</dt>
             <dd className="text-foreground">{manual.outlet_name || '-'}</dd>
             {log.source === 'qr' && (
