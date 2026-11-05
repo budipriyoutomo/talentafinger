@@ -27,7 +27,11 @@ class SettingSeeder extends Seeder
             ]);
 
             if (! $row->exists) {
-                $row->value = $item['default'] ?? null;
+                $default = $item['default'] ?? null;
+                // Secret dari .env disimpan terenkripsi, sama seperti Setting::put().
+                $row->value = $item['type'] === 'password' && $default !== null
+                    ? Setting::encryptSecret((string) $default)
+                    : $default;
             }
 
             $row->save();

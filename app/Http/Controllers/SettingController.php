@@ -28,7 +28,9 @@ class SettingController extends Controller
         ]);
 
         $known = Setting::pluck('type', 'key'); // key => type
-        $current = Setting::pluck('value', 'key');
+        // Nilai asli (secret didekripsi) supaya perbandingan di bawah tidak
+        // selalu menganggap password "diganti" karena membandingkan ciphertext.
+        $current = Setting::all()->mapWithKeys(fn (Setting $s) => [$s->key => Setting::plainValue($s)]);
         $updated = 0;
         $changes = [];
 

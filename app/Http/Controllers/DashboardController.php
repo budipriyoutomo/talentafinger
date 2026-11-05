@@ -433,7 +433,8 @@ class DashboardController extends Controller
                 'is_set' => filled($s->value),
                 // Pratinjau ter-mask (3 depan + 4 belakang) hanya untuk password
                 // yang sudah terisi, supaya admin tahu nilai yang tersimpan.
-                'preview' => $s->type === 'password' ? $this->maskSecret($s->value) : null,
+                // Didekripsi dulu: yang tersimpan di DB adalah ciphertext.
+                'preview' => $s->type === 'password' ? $this->maskSecret(Setting::plainValue($s)) : null,
             ])
             ->groupBy('group');
     }
