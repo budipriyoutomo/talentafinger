@@ -194,30 +194,11 @@ class ManualAttendanceController extends Controller
             'note.required_if' => 'Alasan penolakan wajib diisi.',
         ]);
 
-        // Update bersyarat (atomik): bila dua supervisor me-review bersamaan, hanya
-        // yang pertama menang — yang kedua tak menimpa keputusan yang sudah ada.
         $approvedStatus = AttendanceSource::readyStatus($log->source);
 
-        $updated = AttendanceLog::whereKey($log->id)
-            ->where('status_sync', 'pending_review')
-            ->update([
-                // Disetujui -> 'pending': ikut auto-send / "Kirim Semua Pending" seperti
-                // log mesin. Bila sumbernya tak di-sync (master sumber) -> 'skipped'.
-                'status_sync' => $data['action'] === 'approve' ? $approvedStatus : 'rejected',
-                'reviewed_by' => $request->user()->id,
-                'reviewed_at' => now(),
-                'review_note' => $data['note'] ?? null,
-            ]);
-
-        if ($updated === 0) {
+        if (! $this->applyReview($log, $data['action'], $data['note'] ?? null, $request->user())) {
             return response()->json(['message' => 'Absen ini sudah direview sebelumnya.'], 422);
         }
-
-        AuditLog::record(
-            $data['action'] === 'approve' ? 'attendance.manual_approved' : 'attendance.manual_rejected',
-            ['type' => 'attendance_log', 'id' => $log->id, 'label' => $log->employee?->name],
-            ['source' => $log->source, 'note' => $data['note'] ?? null],
-        );
 
         return response()->json([
             'message' => match (true) {
@@ -227,6 +208,95 @@ class ManualAttendanceController extends Controller
             },
             'log' => $log->fresh(),
         ]);
+    }
+
+    /**
+     * POST /api/attendance-logs/review-bulk — Setujui / Tolak banyak absen sekaligus.
+     *
+     * Wewenang diperiksa PER LOG: log di luar scope (atau id yang tak ada) dihitung
+     * 'forbidden' tanpa menggagalkan seluruh batch, dan statusnya tak disentuh.
+     */
+    public function reviewBulk(Request $request)
+    {
+        // Tanpa izin review sama sekali = tolak di depan, bukan 200 berisi "forbidden" semua.
+        $this->authorizePermission($request, 'attendance.review');
+
+        $data = $request->validate([
+            'ids' => 'required|array|min:1|max:200',
+            'ids.*' => 'uuid|distinct',
+            'action' => 'required|in:approve,reject',
+            'note' => 'nullable|string|max:500|required_if:action,reject',
+        ], [
+            'ids.max' => 'Maksimal 200 absen sekali proses.',
+            'note.required_if' => 'Alasan penolakan wajib diisi.',
+        ]);
+
+        $user = $request->user();
+        $result = ['approved' => 0, 'rejected' => 0, 'already_reviewed' => 0, 'forbidden' => 0];
+
+        $logs = AttendanceLog::with('employee')->whereIn('id', $data['ids'])->get()->keyBy('id');
+
+        foreach ($data['ids'] as $id) {
+            $log = $logs->get($id);
+
+            // Id tak dikenal sengaja disamakan dengan "di luar wewenang", supaya
+            // respons tak membocorkan keberadaan log outlet lain.
+            if ($log === null || $user->cannot('review', $log)) {
+                $result['forbidden']++;
+                continue;
+            }
+
+            if ($this->applyReview($log, $data['action'], $data['note'] ?? null, $user)) {
+                $result[$data['action'] === 'approve' ? 'approved' : 'rejected']++;
+            } else {
+                $result['already_reviewed']++;
+            }
+        }
+
+        $done = $result['approved'] + $result['rejected'];
+        $parts = array_filter([
+            $done > 0 ? ($data['action'] === 'approve' ? "{$done} disetujui" : "{$done} ditolak") : null,
+            $result['already_reviewed'] > 0 ? "{$result['already_reviewed']} sudah direview sebelumnya" : null,
+            $result['forbidden'] > 0 ? "{$result['forbidden']} di luar wewenang" : null,
+        ]);
+
+        return response()->json([
+            ...$result,
+            'message' => $parts ? ucfirst(implode(', ', $parts)) . '.' : 'Tidak ada absen yang diproses.',
+        ]);
+    }
+
+    /**
+     * Terapkan keputusan review ke satu log + catat audit. False bila log sudah
+     * tidak 'pending_review' (sudah direview orang lain). Wewenang diperiksa pemanggil.
+     */
+    private function applyReview(AttendanceLog $log, string $action, ?string $note, User $reviewer): bool
+    {
+        // Update bersyarat (atomik): bila dua supervisor me-review bersamaan, hanya
+        // yang pertama menang — yang kedua tak menimpa keputusan yang sudah ada.
+        $updated = AttendanceLog::whereKey($log->id)
+            ->where('status_sync', 'pending_review')
+            ->update([
+                // Disetujui -> 'pending': ikut auto-send / "Kirim Semua Pending" seperti
+                // log mesin. Bila sumbernya tak di-sync (master sumber) -> 'skipped'.
+                'status_sync' => $action === 'approve' ? AttendanceSource::readyStatus($log->source) : 'rejected',
+                'reviewed_by' => $reviewer->id,
+                'reviewed_at' => now(),
+                'review_note' => $note,
+            ]);
+
+        if ($updated === 0) {
+            return false;
+        }
+
+        AuditLog::record(
+            $action === 'approve' ? 'attendance.manual_approved' : 'attendance.manual_rejected',
+            ['type' => 'attendance_log', 'id' => $log->id, 'label' => $log->employee?->name],
+            ['source' => $log->source, 'note' => $note],
+            $reviewer,
+        );
+
+        return true;
     }
 
     /**

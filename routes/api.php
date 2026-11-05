@@ -114,6 +114,8 @@ Route::get('/attendance-logs/{id}/photo', [ManualAttendanceController::class, 'p
 // Absen QR: dikirim dari /absen/qr setelah scan QR kiosk (lihat QrAttendanceController).
 Route::post('/attendance/qr', [QrAttendanceController::class, 'store'])->middleware('throttle:10,1');
 Route::post('/attendance-logs/{id}/review', [ManualAttendanceController::class, 'review']);
+// Review massal tab "Perlu Review" (maks 200 id); wewenang dicek per log.
+Route::post('/attendance-logs/review-bulk', [ManualAttendanceController::class, 'reviewBulk']);
 
 // ===== Pengaturan aplikasi =====
 Route::put('/settings', [SettingController::class, 'update']);

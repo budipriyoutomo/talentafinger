@@ -12,7 +12,8 @@ import { Select } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { usePermissions } from '@/lib/permissions'
 import ManualReviewDialog, { EMPLOYEE_SOURCE, STATUS_LABEL, STATUS_VARIANT } from '@/components/ManualReviewDialog'
-import { Download, Send, Loader2, X, ChevronLeft, ChevronRight, RefreshCw, ListChecks, AlertTriangle, CheckCircle2, SlidersHorizontal, Camera, Cpu } from 'lucide-react'
+import BulkRejectDialog from '@/components/BulkRejectDialog'
+import { Download, Send, Loader2, X, ChevronLeft, ChevronRight, RefreshCw, ListChecks, AlertTriangle, CheckCircle2, SlidersHorizontal, Camera, Cpu, Check } from 'lucide-react'
 
 // Pilihan jeda auto-refresh (detik).
 const REFRESH_INTERVAL = 15
@@ -79,6 +80,9 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
   // bisa dicentang dan status apa yang dikirim ulang.
   const activeTab = filters.status || ''
   const canResendTab = RESENDABLE_TABS.includes(activeTab)
+  // Tab "Perlu Review": baris bisa dicentang untuk Setujui/Tolak massal.
+  const canReviewTab = activeTab === 'pending_review' && canReview
+  const selectable = canResendTab || canReviewTab
 
   const [sendingId, setSendingId] = useState(null)
   const [sendingAll, setSendingAll] = useState(false)
@@ -87,8 +91,11 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
   // Job kirim ulang yang sedang berjalan di background + status terakhirnya.
   const [resendJobId, setResendJobId] = useState(null)
   const [resendJob, setResendJob] = useState(null)
-  // Baris tab "Gagal"/"Terkirim" yang dicentang, key = id log (lihat getRowId di DataTable).
+  // Baris tab "Gagal"/"Terkirim"/"Perlu Review" yang dicentang, key = id log (lihat getRowId di DataTable).
   const [rowSelection, setRowSelection] = useState({})
+  // Review massal: aksi yang sedang diproses ('approve' | 'reject' | null) + dialog alasan tolak.
+  const [bulkReviewing, setBulkReviewing] = useState(null)
+  const [showBulkReject, setShowBulkReject] = useState(false)
   // Panel filter disembunyikan default; otomatis terbuka bila ada filter aktif dari URL.
   const [showFilters, setShowFilters] = useState(
     () => !!(filters.machine_id || filters.brand_id || filters.outlet_id || filters.source || filters.date_from || filters.date_to)
@@ -97,7 +104,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
   // Refresh tabel berkala tanpa kehilangan filter/scroll. Hanya muat ulang
   // 'logs' & 'pagination' (filter dipertahankan dari URL aktif).
   const sendingRef = useRef(false)
-  sendingRef.current = sendingId !== null || sendingAll || resending
+  sendingRef.current = sendingId !== null || sendingAll || resending || bulkReviewing !== null
   useEffect(() => {
     if (!autoRefresh) return
     const id = setInterval(() => {
@@ -147,13 +154,13 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
   // ganti halaman/tab, atau filter berubah) supaya jumlah terpilih selalu jujur.
   useEffect(() => {
     const visible = new Set(
-      canResendTab ? logs.filter((l) => l.status_sync === activeTab).map((l) => l.id) : []
+      selectable ? logs.filter((l) => l.status_sync === activeTab).map((l) => l.id) : []
     )
     setRowSelection((prev) => {
       const next = Object.fromEntries(Object.entries(prev).filter(([id, on]) => on && visible.has(id)))
       return Object.keys(next).length === Object.keys(prev).length ? prev : next
     })
-  }, [logs, activeTab, canResendTab])
+  }, [logs, activeTab, selectable])
 
   const selectedIds = useMemo(
     () => Object.keys(rowSelection).filter((id) => rowSelection[id]),
@@ -377,8 +384,49 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
     }
   }
 
-  // Kolom centang hanya muncul di tab "Gagal"/"Terkirim" (di situ semua baris
-  // memang bisa dikirim ulang).
+  // Setujui / Tolak semua baris yang dicentang di tab "Perlu Review". Server
+  // memeriksa wewenang per log dan melaporkan yang dilewati.
+  const runBulkReview = async (action, note = null) => {
+    setBulkReviewing(action)
+    try {
+      const res = await fetch('/api/attendance-logs/review-bulk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'X-CSRF-TOKEN': csrf(),
+        },
+        body: JSON.stringify({ ids: selectedIds, action, note }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(data.message || 'Gagal menyimpan review')
+        return
+      }
+      const skipped = (data.already_reviewed ?? 0) + (data.forbidden ?? 0)
+      if (skipped > 0) toast.warning(data.message)
+      else toast.success(data.message)
+      setShowBulkReject(false)
+      setRowSelection({})
+      router.reload({ only: ['logs', 'pagination'] })
+    } catch (err) {
+      toast.error('Gagal menyimpan review: ' + err.message)
+    } finally {
+      setBulkReviewing(null)
+    }
+  }
+
+  const approveSelected = () => {
+    confirmToast({
+      message: `Setujui ${selectedIds.length} absen terpilih?`,
+      description: 'Pastikan foto dan lokasinya sudah diperiksa. Absen foto masuk antrean kirim ke Talenta.',
+      confirmLabel: 'Setujui',
+      onConfirm: () => runBulkReview('approve'),
+    })
+  }
+
+  // Kolom centang muncul di tab "Gagal"/"Terkirim" (kirim ulang) dan
+  // "Perlu Review" (review massal): di situ semua baris memang bisa diproses.
   const selectColumn = {
     id: 'select',
     enableSorting: false,
@@ -401,7 +449,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
 
   const columns = useMemo(
     () => [
-      ...(canResendTab ? [selectColumn] : []),
+      ...(selectable ? [selectColumn] : []),
       {
         accessorKey: 'timestamp',
         header: 'Timestamp',
@@ -446,6 +494,38 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         header: 'Employee',
         cell: ({ row }) => <div className="text-sm">{row.getValue('employee_name') || 'N/A'}</div>,
       },
+      // Tab "Perlu Review": foto kecil + jarak + akurasi, supaya bisa diperiksa
+      // tanpa membuka dialog satu per satu.
+      ...(activeTab === 'pending_review' ? [{
+        id: 'evidence',
+        enableSorting: false,
+        header: 'Bukti',
+        cell: ({ row }) => {
+          const log = row.original
+          const manual = log.manual
+          if (!manual) return <span className="text-xs text-muted-foreground">-</span>
+          return (
+            <div className="flex items-center gap-2">
+              {manual.photo_url ? (
+                <button
+                  type="button"
+                  onClick={() => setReviewLog({ ...log, timestamp_label: formatTimestamp(log.timestamp) })}
+                  className="shrink-0 overflow-hidden rounded border border-slate-200 dark:border-slate-800"
+                  title="Buka detail"
+                >
+                  <img src={manual.photo_url} alt="" loading="lazy" className="h-12 w-12 object-cover" />
+                </button>
+              ) : (
+                <span className="text-xs text-muted-foreground">tanpa foto</span>
+              )}
+              <div className="text-xs leading-tight">
+                <div>±{manual.distance_meters ?? '?'} m</div>
+                <div className="text-muted-foreground">GPS ±{manual.accuracy_meters ?? '?'} m</div>
+              </div>
+            </div>
+          )
+        },
+      }] : []),
       {
         accessorKey: 'status_sync',
         header: 'Status',
@@ -524,7 +604,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         },
       },
     ],
-    [machines, sendingId, activeTab, canResendTab, canSend, canReview]
+    [machines, sendingId, activeTab, selectable, canSend, canReview]
   )
 
   const handleExport = () => {
@@ -631,7 +711,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
                   </CardTitle>
                   <CardDescription>
                     {activeTab === 'pending_review'
-                      ? 'Absen foto / QR dari karyawan yang belum disetujui • tidak dikirim ke Talenta sebelum disetujui'
+                      ? 'Absen foto / QR dari karyawan yang belum disetujui • centang baris untuk Setujui/Tolak sekaligus (maks 200)'
                       : activeTab === 'failed'
                       ? 'Semua absensi berstatus failed • centang baris untuk pilih yang dikirim ulang, atau kosongkan centang untuk kirim ulang semua'
                       : activeTab === 'sent'
@@ -639,7 +719,28 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
                         : 'Click column headers to sort • Use search to filter'}
                   </CardDescription>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+                  {canReviewTab && (
+                    <>
+                      <Button
+                        onClick={approveSelected}
+                        disabled={selectedIds.length === 0 || bulkReviewing !== null}
+                        className="gap-2"
+                      >
+                        {bulkReviewing === 'approve' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                        Setujui Terpilih{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowBulkReject(true)}
+                        disabled={selectedIds.length === 0 || bulkReviewing !== null}
+                        className="gap-2"
+                      >
+                        <X className="h-4 w-4" />
+                        Tolak Terpilih{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
+                      </Button>
+                    </>
+                  )}
                   {canResendTab && canSend && (
                     <Button
                       onClick={resendBatch}
@@ -800,7 +901,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
               columns={columns}
               data={logs}
               filterPlaceholder="Filter by employee or biometric ID..."
-              enableRowSelection={canResendTab}
+              enableRowSelection={selectable}
               rowSelection={rowSelection}
               onRowSelectionChange={setRowSelection}
               getRowId={(log) => log.id}
@@ -844,6 +945,15 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
             </div>
           </CardContent>
         </Card>
+
+        {showBulkReject && (
+          <BulkRejectDialog
+            count={selectedIds.length}
+            busy={bulkReviewing === 'reject'}
+            onCancel={() => setShowBulkReject(false)}
+            onSubmit={(note) => runBulkReview('reject', note)}
+          />
+        )}
 
         {reviewLog && (
           <ManualReviewDialog
