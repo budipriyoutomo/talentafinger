@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Jobs\Concerns\RunsOnLongQueue;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Throwable;
@@ -20,6 +21,7 @@ use App\Services\ZkSyncService;
 class SyncFingerprintsBulk implements ShouldQueue
 {
     use Queueable;
+    use RunsOnLongQueue;
 
     // Batch utuh; jangan retry otomatis (kegagalan per-PIN sudah ditangani
     // di dalam handle dan dicatat per item).
@@ -34,7 +36,9 @@ class SyncFingerprintsBulk implements ShouldQueue
     // memblokir job lain.
     public function __construct(
         private string $jobId,
-    ) {}
+    ) {
+        $this->useLongQueue();
+    }
 
     public function handle(ZkSyncService $zk): void
     {

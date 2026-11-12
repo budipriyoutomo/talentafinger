@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Jobs\Concerns\RunsOnLongQueue;
 use App\Models\TalentaEmployeeSyncRun;
 use App\Models\User;
 use App\Services\TalentaEmployeeSyncRunner;
@@ -17,6 +18,7 @@ use Throwable;
 class RunTalentaEmployeeSync implements ShouldQueue
 {
     use Queueable;
+    use RunsOnLongQueue;
 
     // Tak di-retry otomatis: pull sudah retry per request, dan run yang gagal
     // terlihat di riwayat untuk diulang manual.
@@ -27,7 +29,9 @@ class RunTalentaEmployeeSync implements ShouldQueue
     public function __construct(
         private array $runIds,
         private ?int $userId = null,
-    ) {}
+    ) {
+        $this->useLongQueue();
+    }
 
     public function handle(TalentaEmployeeSyncRunner $runner): void
     {

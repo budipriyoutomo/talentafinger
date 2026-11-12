@@ -7,6 +7,7 @@ use App\Models\DeviceCommand;
 use App\Models\Employee;
 use App\Models\Machine;
 use App\Models\Setting;
+use App\Support\DeviceText;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -142,7 +143,11 @@ class DeviceCommandService
 
         // Nama karyawan diambil dari Biometric ID (PIN global) → employee.
         // Mesin butuh USERINFO lebih dulu sebelum FINGERTMP bisa ditempel.
-        $name = $this->resolveEmployeeName($pin) ?? $pin;
+        // Semua nilai field dibersihkan dari karakter kontrol: tab/baris baru di
+        // nama (form registrasi publik) bisa menyisipkan field atau perintah lain.
+        $name = DeviceText::clean($this->resolveEmployeeName($pin) ?? '');
+        $pin = DeviceText::clean($pin);
+        $name = $name !== '' ? $name : $pin;
 
         $count = 0;
 
@@ -158,7 +163,11 @@ class DeviceCommandService
             DeviceCommand::create([
                 'machine_id' => $target->id,
                 'type' => 'push_fp',
-                'command' => "DATA UPDATE FINGERTMP PIN={$pin}\tFID={$tpl->fid}\tSize={$tpl->size}\tValid={$tpl->valid}\tTMP={$tpl->template}",
+                'command' => "DATA UPDATE FINGERTMP PIN={$pin}"
+                    . "\tFID=" . DeviceText::clean($tpl->fid)
+                    . "\tSize=" . DeviceText::clean($tpl->size)
+                    . "\tValid=" . DeviceText::clean($tpl->valid)
+                    . "\tTMP=" . DeviceText::clean($tpl->template),
                 'status' => 'pending',
             ]);
             $count++;

@@ -64,8 +64,9 @@ curl -X POST "http://localhost:8000/iclock/cdata" \
 # Run tests
 php artisan test
 
-# Run queue worker
-php artisan queue:work redis --queue=attendance
+# Run queue workers (dua proses, jangan digabung — retry_after-nya beda)
+php artisan queue:work database --queue=mail,default,attendance --timeout=90
+php artisan queue:work database-long --queue=long --tries=1 --timeout=3600
 ```
 
 ## Core Functionality Checklist

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\DeviceText;
 use App\Models\AuditLog;
 use App\Models\Employee;
 use App\Models\Machine;
@@ -32,12 +33,12 @@ class EmployeeController extends Controller
         $this->authorize('create', Employee::class);
 
         $data = $request->validate([
-            'name' => 'required',
+            'name' => ['required', 'string', 'max:255', DeviceText::RULE],
             'talenta_employee_id' => 'required|unique:employees,talenta_employee_id',
             'employee_code' => 'nullable',
             // Karyawan tertaut Talenta: email ditimpa lagi oleh sync karyawan.
             'email' => 'nullable|email|max:150',
-            'biometric_id' => 'nullable|string|max:50',
+            'biometric_id' => ['nullable', 'string', 'max:50', DeviceText::RULE],
             'outlet_ids' => 'nullable|array',
             'outlet_ids.*' => 'exists:outlets,id',
             'device_privilege' => 'nullable|integer|min:0|max:14',
@@ -68,7 +69,7 @@ class EmployeeController extends Controller
         $this->authorize('update', $employee);
 
         $data = $request->validate([
-            'name' => 'required',
+            'name' => ['required', 'string', 'max:255', DeviceText::RULE],
             // Karyawan hasil sync Talenta boleh tanpa badgeno: barcode-nya memang
             // belum diisi di Talenta (absensinya tertahan sampai diisi).
             'talenta_employee_id' => [
@@ -79,7 +80,7 @@ class EmployeeController extends Controller
             'employee_code' => 'nullable',
             // Karyawan tertaut Talenta: email ditimpa lagi oleh sync karyawan.
             'email' => 'nullable|email|max:150',
-            'biometric_id' => 'nullable|string|max:50',
+            'biometric_id' => ['nullable', 'string', 'max:50', DeviceText::RULE],
             'outlet_ids' => 'nullable|array',
             'outlet_ids.*' => 'exists:outlets,id',
             'device_privilege' => 'nullable|integer|min:0|max:14',
@@ -198,8 +199,8 @@ class EmployeeController extends Controller
         $this->authorize('create', Employee::class);
 
         $data = $request->validate([
-            'biometric_id' => 'required|string|max:50',
-            'name' => 'nullable|string|max:150',
+            'biometric_id' => ['required', 'string', 'max:50', DeviceText::RULE],
+            'name' => ['nullable', 'string', 'max:150', DeviceText::RULE],
             'source_machine_id' => 'required|exists:machines,id',
             'capture' => 'boolean',
         ]);

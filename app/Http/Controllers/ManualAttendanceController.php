@@ -194,6 +194,12 @@ class ManualAttendanceController extends Controller
         $log = AttendanceLog::findOrFail($id);
         $this->authorize('review', $log);
 
+        // Sengaja di sini, bukan di policy: admin melewati policy lewat Gate::before,
+        // padahal admin pun tak boleh menyetujui absennya sendiri.
+        if ($this->isOwnLog($request->user(), $log)) {
+            return response()->json(['message' => 'Absen milik Anda sendiri harus direview orang lain.'], 403);
+        }
+
         $data = $request->validate([
             'action' => 'required|in:approve,reject',
             'note' => 'nullable|string|max:500|required_if:action,reject',
@@ -239,7 +245,7 @@ class ManualAttendanceController extends Controller
         ]);
 
         $user = $request->user();
-        $result = ['approved' => 0, 'rejected' => 0, 'already_reviewed' => 0, 'forbidden' => 0];
+        $result = ['approved' => 0, 'rejected' => 0, 'already_reviewed' => 0, 'forbidden' => 0, 'own' => 0];
 
         $logs = AttendanceLog::with('employee')->whereIn('id', $data['ids'])->get()->keyBy('id');
 
@@ -250,6 +256,12 @@ class ManualAttendanceController extends Controller
             // respons tak membocorkan keberadaan log outlet lain.
             if ($log === null || $user->cannot('review', $log)) {
                 $result['forbidden']++;
+                continue;
+            }
+
+            // Absen sendiri dilewati (berlaku juga untuk admin, lihat review()).
+            if ($this->isOwnLog($user, $log)) {
+                $result['own']++;
                 continue;
             }
 
@@ -265,12 +277,19 @@ class ManualAttendanceController extends Controller
             $done > 0 ? ($data['action'] === 'approve' ? "{$done} disetujui" : "{$done} ditolak") : null,
             $result['already_reviewed'] > 0 ? "{$result['already_reviewed']} sudah direview sebelumnya" : null,
             $result['forbidden'] > 0 ? "{$result['forbidden']} di luar wewenang" : null,
+            $result['own'] > 0 ? "{$result['own']} absen milik Anda sendiri dilewati" : null,
         ]);
 
         return response()->json([
             ...$result,
             'message' => $parts ? ucfirst(implode(', ', $parts)) . '.' : 'Tidak ada absen yang diproses.',
         ]);
+    }
+
+    /** Absen ini milik karyawan yang tertaut ke akun peninjau? */
+    private function isOwnLog(User $user, AttendanceLog $log): bool
+    {
+        return $user->employee_id !== null && $user->employee_id === $log->employee_id;
     }
 
     /**

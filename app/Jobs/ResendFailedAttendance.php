@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Jobs\Concerns\RunsOnLongQueue;
 use App\Models\AttendanceResendJob;
 use App\Models\User;
 use App\Services\AttendanceSyncService;
@@ -27,6 +28,7 @@ use Throwable;
 class ResendFailedAttendance implements ShouldQueue
 {
     use Queueable;
+    use RunsOnLongQueue;
 
     /**
      * Sengaja tidak di-retry. Job ini mengubah data (status log) dan sudah tahan
@@ -40,7 +42,9 @@ class ResendFailedAttendance implements ShouldQueue
     public function __construct(
         private string $jobId,
     ) {
-        $this->onQueue('attendance');
+        // Dulu di antrean 'attendance': job ini bisa jalan sampai 1 jam dan
+        // menahan pengiriman absensi biasa di belakangnya.
+        $this->useLongQueue();
     }
 
     public function handle(AttendanceSyncService $sync): void

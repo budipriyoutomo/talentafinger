@@ -409,7 +409,7 @@ export default function AttendanceLogs({ logs = [], machines = [], brands = [], 
         toast.error(data.message || 'Gagal menyimpan review')
         return
       }
-      const skipped = (data.already_reviewed ?? 0) + (data.forbidden ?? 0)
+      const skipped = (data.already_reviewed ?? 0) + (data.forbidden ?? 0) + (data.own ?? 0)
       if (skipped > 0) toast.warning(data.message)
       else toast.success(data.message)
       setShowBulkReject(false)

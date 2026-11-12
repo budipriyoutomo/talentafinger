@@ -44,6 +44,22 @@ return [
             'after_commit' => false,
         ],
 
+        // Koneksi khusus job berdurasi panjang ($timeout 3600: sync/distribusi/hapus
+        // sidik jari massal, kirim ulang absensi, sync karyawan Talenta). retry_after
+        // berlaku per KONEKSI, dan wajib lebih besar dari $timeout job; kalau tidak,
+        // job yang masih berjalan dianggap macet lalu diambil worker lain (jalan ganda).
+        // Dipisah supaya retry_after 90 detik untuk job pendek (email, dll.) tetap
+        // cepat pulih bila worker-nya mati. Satu tabel 'jobs', dibedakan nama antrean.
+        // Diproses worker tersendiri: queue:work database-long --queue=long
+        'database-long' => [
+            'driver' => 'database',
+            'connection' => env('DB_QUEUE_CONNECTION'),
+            'table' => env('DB_QUEUE_TABLE', 'jobs'),
+            'queue' => 'long',
+            'retry_after' => (int) env('DB_QUEUE_LONG_RETRY_AFTER', 3900),
+            'after_commit' => false,
+        ],
+
         'beanstalkd' => [
             'driver' => 'beanstalkd',
             'host' => env('BEANSTALKD_QUEUE_HOST', 'localhost'),

@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Jobs\Concerns\RunsOnLongQueue;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Throwable;
@@ -18,13 +19,16 @@ use App\Services\FingerprintMasterService;
 class DistributeFingerprintsBulk implements ShouldQueue
 {
     use Queueable;
+    use RunsOnLongQueue;
 
     public $tries = 1;
     public $timeout = 3600;
 
     public function __construct(
         private string $jobId,
-    ) {}
+    ) {
+        $this->useLongQueue();
+    }
 
     public function handle(FingerprintMasterService $svc): void
     {

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\DeviceText;
 use App\Models\AuditLog;
 use App\Models\Company;
 use App\Models\Outlet;
@@ -92,7 +93,7 @@ class RegistrationController extends Controller
         abort_unless(static::enabled(), 404);
 
         $data = $request->validate([
-            'name' => 'required|string|max:150',
+            'name' => ['required', 'string', 'max:150', DeviceText::RULE],
             'nik' => 'required|string|max:100',
             'email' => 'required|email|max:150',
             'company_id' => 'required|uuid',

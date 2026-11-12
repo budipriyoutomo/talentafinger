@@ -40,6 +40,18 @@ class Employee extends Model
         'removed_from_machines_at' => 'datetime',
     ];
 
+    /**
+     * Nama ikut dikirim ke mesin (DATA UPDATE USERINFO Name=...). Karakter
+     * kontrol dibuang di semua jalur masuk (form, registrasi, sync Talenta),
+     * bukan hanya yang lewat validasi.
+     */
+    protected function name(): \Illuminate\Database\Eloquent\Casts\Attribute
+    {
+        return \Illuminate\Database\Eloquent\Casts\Attribute::make(
+            set: fn ($value) => $value === null ? null : \App\Support\DeviceText::clean($value),
+        );
+    }
+
     /** Snapshot Talenta yang tertaut ke karyawan ini (hasil sync Tahap 2). */
     public function talentaEmployee()
     {
